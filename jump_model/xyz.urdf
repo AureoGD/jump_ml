@@ -1,0 +1,85 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<robot name="xyz.urdf">
+
+  <link name="base_link">
+    <inertial>
+       <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.1"/>
+       <inertia ixx="8e-05" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="White">
+        <color rgba="1 1 1 1.0"/>
+      </material>
+    </visual>
+  </link>
+  
+  <link name="x_dir">
+    <inertial>
+       <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.1"/>
+       <inertia ixx="8e-05" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002"/>
+    </inertial>
+    <visual>
+		<geometry>
+		    <cylinder length="0.10000" radius="0.0025"/>
+        </geometry>
+      <material name="Red">
+        <color rgba="1 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+    <link name="y_dir">
+    <inertial>
+       <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.1"/>
+       <inertia ixx="8e-05" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002"/>
+    </inertial>
+    <visual>
+		<geometry>
+		    <cylinder length="0.10000" radius="0.0025"/>
+        </geometry>
+      <material name="Green">
+        <color rgba="0 1 0 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+      <link name="z_dir">
+    <inertial>
+       <origin rpy="0 0 0" xyz="0 0 0"/>
+       <mass value="0.1"/>
+       <inertia ixx="8e-05" ixy="0" ixz="0" iyy="0.0002" iyz="0" izz="0.0002"/>
+    </inertial>
+    <visual>
+		<geometry>
+		    <cylinder length="0.10000" radius="0.0025"/>
+        </geometry>
+      <material name="Blue">
+        <color rgba="0 0 1 1."/>
+      </material>
+    </visual>
+  </link>
+
+  	<joint name="x_joint" type="fixed">
+		<parent link="base_link"/>
+		<child link="x_dir"/>
+		<origin rpy="0.00000 1.57 0.00000" xyz="0.05000 0.00000 0.00000"/>
+	</joint>
+
+    <joint name="y_joint" type="fixed">
+		<parent link="base_link"/>
+		<child link="y_dir"/>
+		<origin rpy="1.57 0  0.00000" xyz="0.000 0.05000 0.00000"/>
+	</joint>
+
+        <joint name="z_joint" type="fixed">
+		<parent link="base_link"/>
+		<child link="z_dir"/>
+		<origin rpy="0 0  0.00000" xyz="0.000 0.0 0.050000"/>
+	</joint>
+</robot>

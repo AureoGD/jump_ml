@@ -1,0 +1,19 @@
+# rl_training/configs/ppo_config.yaml
+
+policy_type: cnn  # "cnn" or "mlp"
+
+policy_kwargs:
+  features_extractor_kwargs:
+    conv_layers: [32, 64]
+    kernel_size: 3
+    activation: relu  # only inside features_extractor_kwargs for CNN
+  net_arch: [256, 256]  # only for MLP
+
+ppo_hyperparams:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0

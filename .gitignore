@@ -1,0 +1,20 @@
+# Ignore all __pycache__ folders
+__pycache__/
+
+# Ignore Python compiled files
+*.pyc
+
+# Ignore specific folders
+Data/
+models/
+rgc_controller/build
+stagnation_classifier/raw_episodes
+stagnation_classifier/training_data
+stagnation_classifier/videos
+stagnation_classifier/labeled_episodes_manual
+validate_mpc/performance_video
+validate_mpc/tensorboard
+
+# Ignore VS Code settings
+.vscode/
+test.py
