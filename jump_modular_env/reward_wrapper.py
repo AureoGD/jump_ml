@@ -124,6 +124,9 @@ class RewardFcns:
         # Reward for crouch in the second phase
         self.rewards[9] = self.crouch_weight * self._crouch_reward()
 
+        # Reward for choose an aproprieate model in a specifi phase
+        self.rewards[10] = self._preferred_mode_bonus()
+
         reward = self.rewards.sum() + self._curriculum_learning_check()
 
         return reward
@@ -320,4 +323,20 @@ class RewardFcns:
             self.curriculum_phase = 3
             return 100
 
+        return 0
+
+    def _preferred_mode_bonus(self):
+        """
+        During curriculum phase 1, give a small bonus for using empirically preferred modes.
+        Helps encourage stable behaviors early in training.
+
+        Returns:
+            float: A small positive reward (e.g., 0.5) or 0 otherwise.
+        """
+        if self.curriculum_phase == 1 and self.robot_states.mode in [0, 1]:
+            return 1.0
+        if self.curriculum_phase == 2 and self.robot_states.mode == 2:
+            return 1.0
+        if self.curriculum_phase == 2 and self.robot_states.mode in [0, 1]:
+            return -5.0
         return 0

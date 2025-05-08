@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from models import CNNStagnationClassifier
+from .models import CNNStagnationClassifier
 
 
 class StagnationClassifier:

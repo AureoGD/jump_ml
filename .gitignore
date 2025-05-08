@@ -14,6 +14,7 @@ stagnation_classifier/videos
 stagnation_classifier/labeled_episodes_manual
 validate_mpc/performance_video
 validate_mpc/tensorboard
+validate_mpc/mpc_data
 
 # Ignore VS Code settings
 .vscode/

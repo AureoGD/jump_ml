@@ -3,6 +3,7 @@ from collections import deque
 from icecream import ic
 from .state_normalizer import StateNormalizer
 from .reward_wrapper import RewardFcns
+from stagnation_classifier.cnn_stagnation_wrapper import StagnationClassifier
 
 
 class MLWrapper:
@@ -44,8 +45,11 @@ class MLWrapper:
         self.pred_st = np.zeros((self.NUM_OBS_STATES_P, self.NF))
 
         # deque of the states
-        self.predictable_history = deque(maxlen=self.NP)
-        self.nonpredictable_history = deque(maxlen=self.NP)
+        zero_pred = [np.zeros(self.NUM_OBS_STATES_P) for _ in range(self.NP)]
+        zero_nonpred = [np.zeros(self.NUM_OBS_STATES_NP) for _ in range(self.NP)]
+
+        self.predictable_history = deque(zero_pred, maxlen=self.NP)
+        self.nonpredictable_history = deque(zero_nonpred, maxlen=self.NP)
 
         self.dt = 0.01
 
@@ -58,6 +62,9 @@ class MLWrapper:
         self.foot_contact_state = 0
 
         # stagnation metric
+        CLASSIFIER_MODEL_PATH = "./stagnation_classifier/models/cnn_classifier_IV.pth"
+        self.classifier = StagnationClassifier(CLASSIFIER_MODEL_PATH)
+
         self.stagnation_metric = 0.0
         self.stagnation_steps = 0
         self.stagnation_threshold = 150
@@ -89,19 +96,16 @@ class MLWrapper:
 
     def _observation(self):
         """
-        This funtion is responsable to evalaute the observed states of the system.
-        First some of the states are evaluated;
-        Then the actual state vector is created, and normalized;
-        The predict states from the RGC-MPC are normalized too;
-        Then the observation dictionary is create as:
-            [past_pred_st, actual_pred_sts states, pred_st]
-            [past_non_pred_st, actual_non__pred_st]
+        Evaluate and normalize system states to create the observation dictionary.
+        Returns:
+            - predictable: (15, NP + NF)
+            - nonpredictable: (11, NP)
         """
-        # append the new action to the list of last N actions and evaluate the history of the transation
         self.transition_history = self._check_transition()
         self.foot_contact_state = self._check_contact_mode()
         self.stagnation_metric = self._update_stagnation_metric()
 
+        # Stack current state
         states = np.vstack(
             (
                 self.robot_states.r_vel,
@@ -118,36 +122,36 @@ class MLWrapper:
                 np.array([[self.stagnation_metric]]),
                 self.robot_states.b_vel,
                 self.robot_states.b_pos,
-            ),
-        )
+            )
+        )  # shape (26, 1)
 
-        norm_states = self.state_normalizer.normalize(states)
+        norm_states = self.state_normalizer.normalize(states).flatten()  # shape (26,)
 
+        # Normalize predicted states for the next NF steps
         for t in range(self.NF):
             self.pred_st[:, t] = self.state_normalizer.normalize(self.pred_st[:, t])
 
-        # First 15: predictable features (r_vel, r_pos, th, dth, q, dq, qr)
-        self.predictable_history.appendleft(norm_states[0:15])
-        # Last 7: non-predictable features (tau, mode, transition, contact, stagnation)
-        self.nonpredictable_history.appendleft(norm_states[15:])
+        # Append past states to history
+        self.predictable_history.appendleft(norm_states[: self.NUM_OBS_STATES_P])
+        self.nonpredictable_history.appendleft(norm_states[self.NUM_OBS_STATES_P :])
 
-        # shape: (obs_dim, N_past + N_future)
-        predictable_obs = np.hstack(list(self.predictable_history) + [self.pred_st])
+        # Convert deques to arrays
+        past_pred_array = np.stack(self.predictable_history, axis=1)  # shape: (15, NP)
+        future_pred_array = self.pred_st  # shape: (15, NF)
+        predictable_obs = np.hstack([past_pred_array, future_pred_array])  # (15, NP+NF)
 
-        # shape: (obs_dim, N_past)
-        # predictable_obs = np.hstack(list(self.predictable_history))
+        nonpredictable_obs = np.stack(self.nonpredictable_history, axis=1)  # (11, NP)
 
         if self.policy_type == "dnn":
-            predictable_obs = predictable_obs.flatten()
-            nonpredictable_obs = np.hstack(list(self.nonpredictable_history)).flatten()
+            return {
+                "predictable": predictable_obs.flatten().astype(np.float32),
+                "nonpredictable": nonpredictable_obs.flatten().astype(np.float32),
+            }
         else:
-            predictable_obs = predictable_obs
-            nonpredictable_obs = np.hstack(list(self.nonpredictable_history))
-
-        return {
-            "predictable": predictable_obs.astype(np.float32),
-            "nonpredictable": nonpredictable_obs.astype(np.float32),
-        }
+            return {
+                "predictable": predictable_obs.astype(np.float32),
+                "nonpredictable": nonpredictable_obs.astype(np.float32),
+            }
 
     def _reward(self):
         self.reward_fcns.update_variables(
@@ -166,15 +170,17 @@ class MLWrapper:
         """
         Return if the the episode is done.
         """
-        # if self.episode_reward <= self.min_reward:
-        #     return True
-        # if self.reward_fcns.curriculum_phase * 750 <= self.inter:
-        #     return True
+        if self.episode_reward <= self.min_reward:
+            return True
+        if self.reward_fcns.curriculum_phase * 400 <= self.inter:
+            return True
         if self.robot_states.b_pos[1, 0] < 0.2:
             return True
-
-        if self.inter >= 5000:
+        if self.reward_fcns.curriculum_phase > 2:
             return True
+
+        # if self.inter >= 5000:
+        #     return True
 
         # otherwise continue
         return False
@@ -216,39 +222,14 @@ class MLWrapper:
         Returns a float in [0, 1], where 1 = completely stagnant.
         """
 
-        current_state = np.hstack(
-            (
-                self.robot_states.b_pos.flatten(),
-                self.robot_states.b_vel.flatten(),
-                self.robot_states.th.flatten(),
-                self.robot_states.dth.flatten(),
-            )
+        stag_value = self.classifier.predict(
+            self.predictable_history, self.nonpredictable_history
         )
 
-        current_mode = self.robot_states.mode
-
-        if self.prev_states is None:
-            self.prev_states = current_state
-            self.prev_mode = current_mode
-            self.stagnation_metric = 0.0
-            return self.stagnation_metric
-
-        delta = np.abs(current_state - self.prev_states)
-        max_delta = np.max(delta)
-        mode_unchanged = current_mode == self.prev_mode
-
-        self.delta_history.append(max_delta)
-        mu, std = np.mean(self.delta_history), np.std(self.delta_history)
-        dyn_thresh = max(self.base_threshold, mu - self.multiplier * std)
-
-        if mode_unchanged and max_delta < dyn_thresh:
+        if stag_value > 0:
             self.stagnation_steps += 1
-        else:
-            self.delta_history.clear()
-            self.stagnation_steps = 0
-
-        self.prev_states = current_state
-        self.prev_mode = current_mode
+        elif self.stagnation_steps > 0 and stag_value == 0:
+            self.stagnation_steps -= 1
 
         if self.stagnation_steps > self.stagnation_threshold:
             stag_over = self.stagnation_steps - self.base_threshold

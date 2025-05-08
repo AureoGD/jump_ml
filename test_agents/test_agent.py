@@ -12,7 +12,7 @@ from jump_modular_env.jump_env import JumperEnv
 
 ALGO = "sac"  # "ppo" or "sac"
 POLICY = "cnn"  # "cnn" or "mlp"
-MODEL_PATH = "models/SAC/cnn/runs/20250501_162304/models/best_model.zip"  # Update path
+MODEL_PATH = "models/SAC/cnn/runs/20250507_172026/models/best_model.zip"  # Update path
 N_EPISODES = 1  # Number of episodes to test
 
 # -------------------------------
