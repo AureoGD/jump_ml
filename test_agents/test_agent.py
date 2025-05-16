@@ -11,8 +11,10 @@ from jump_modular_env.jump_env import JumperEnv
 # -------------------------------
 
 ALGO = "sac"  # "ppo" or "sac"
-POLICY = "cnn"  # "cnn" or "mlp"
-MODEL_PATH = "models/SAC/cnn/runs/20250507_172026/models/best_model.zip"  # Update path
+POLICY = "cnn3h"  # "cnn" or "mlp"
+MODEL_PATH = (
+    "models/SAC/cnn3h/runs/20250512_151504/models/best_model.zip"  # Update path
+)
 N_EPISODES = 1  # Number of episodes to test
 
 # -------------------------------
@@ -64,7 +66,10 @@ def plot_cumulative_reward(reward_list, episode_idx, total_reward):
 
 def main():
     env = JumperEnv(
-        render=True, policy_type=POLICY, discrete_actions=(ALGO.lower() == "ppo")
+        render=True,
+        policy_type=POLICY,
+        debug=True,
+        discrete_actions=(ALGO.lower() == "ppo"),
     )
 
     print(f"Loading model from {MODEL_PATH}")
@@ -77,24 +82,28 @@ def main():
         mode_history = []
         reward_list = []
         inter = 0
+        action = 0
+        mode = 0
+        mode_selected = 0
         while not done:
-            # force_cm = 500
+            # force_cm = 250
 
-            # while inter < 1000:
+            # while inter < 1000 and not done:
             action, _states = model.predict(obs, deterministic=True)
 
-            if isinstance(action, np.ndarray) or isinstance(action, list):
-                mode_selected = int(np.round(action[0]))
-            else:
-                mode_selected = int(np.round(action))
+            if mode == 0:
+                if isinstance(action, np.ndarray) or isinstance(action, list):
+                    mode_selected = int(np.round(action[0]))
+                else:
+                    mode_selected = int(np.round(action))
+            # if mode == 2:
+            #     mode_selected = 2
             mode_history.append(mode_selected)
-            # if inter < force_cm:
-            #     action = 0
-            # else:
-            #     action = 2
-            # mode_history.append(action)
-            # inter += 1
-            obs, reward, terminated, truncated, info = env.step(action)
+
+            inter += 1
+            obs, reward, terminated, truncated, info = env.step(mode_selected)
+            # if info.get("Phase") == 2:
+            #     mode = 2
             total_reward += reward
             reward_list.append(reward)
 

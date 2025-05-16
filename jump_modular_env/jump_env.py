@@ -35,10 +35,13 @@ class JumperEnv(gym.Env):
         self.render_every = render_every
         self.render_interval = render_interval
         self.disturb_enabled = disturb
+        self.discreate_actions = discrete_actions
 
         self.robot_states = RobotStates()
         self.robot_model = JumpModel(_robot_states=self.robot_states)
-        self.ml_wrapper = MLWrapper(_robot_states=self.robot_states, debug=self.debug)
+        self.ml_wrapper = MLWrapper(
+            _robot_states=self.robot_states, debug=self.debug, policy_type=policy_type
+        )
         self.robot_model.set_pred_states_dim(
             self.ml_wrapper.NUM_OBS_STATES_P, self.ml_wrapper.NF
         )
@@ -49,9 +52,15 @@ class JumperEnv(gym.Env):
 
         self.interations = int(self.robot_model.rgc_dt / self.robot_model.sim_dt)
 
-        self.action_space = gym.spaces.Box(
-            low=0.0, high=1.0, shape=(1,), dtype=np.float32
-        )
+        if self.discreate_actions:
+            self.action_space = gym.spaces.Discrete(self.ml_wrapper.NUM_MODES)
+        else:
+            self.action_space = gym.spaces.Box(
+                low=0.0,
+                high=float(self.ml_wrapper.NUM_MODES - 1),
+                shape=(1,),
+                dtype=np.float32,
+            )
 
         self._setup_observation_space()
         self.episode_reward = 0
@@ -68,6 +77,38 @@ class JumperEnv(gym.Env):
                         shape=(
                             self.ml_wrapper.NUM_OBS_STATES_P,
                             self.ml_wrapper.NP + self.ml_wrapper.NF,
+                        ),
+                        dtype=np.float32,
+                    ),
+                    "nonpredictable": spaces.Box(
+                        low=self.ml_wrapper.OBS_LOW_VALUE,
+                        high=self.ml_wrapper.OBS_HIGH_VALUE,
+                        shape=(
+                            self.ml_wrapper.NUM_OBS_STATES_NP,
+                            self.ml_wrapper.NP,
+                        ),
+                        dtype=np.float32,
+                    ),
+                }
+            )
+        elif self.policy_type == "cnn3h":
+            self.observation_space = spaces.Dict(
+                {
+                    "pred_past": spaces.Box(
+                        low=self.ml_wrapper.OBS_LOW_VALUE,
+                        high=self.ml_wrapper.OBS_HIGH_VALUE,
+                        shape=(
+                            self.ml_wrapper.NUM_OBS_STATES_P,
+                            self.ml_wrapper.NP,
+                        ),
+                        dtype=np.float32,
+                    ),
+                    "pred_fut": spaces.Box(
+                        low=self.ml_wrapper.OBS_LOW_VALUE,
+                        high=self.ml_wrapper.OBS_HIGH_VALUE,
+                        shape=(
+                            self.ml_wrapper.NUM_OBS_STATES_P,
+                            self.ml_wrapper.NF,
                         ),
                         dtype=np.float32,
                     ),
@@ -112,9 +153,10 @@ class JumperEnv(gym.Env):
         # self.robot_model.new_action(mode)
 
         if isinstance(self.action_space, gym.spaces.Discrete):
+            # PPO-style: action is an integer index
             action = int(np.clip(action, 0, self.ml_wrapper.NUM_MODES - 1))
         else:
-            # Action might be float or array, be safe:
+            # SAC-style: action is a float, needs rounding and clipping
             if isinstance(action, (np.ndarray, list)):
                 action_value = action[0]
             else:
@@ -147,11 +189,13 @@ class JumperEnv(gym.Env):
         self.current_step += 1
         self.episode_reward += reward
 
-        info = {}
+        info = {"Phase": self.ml_wrapper.reward_fcns.curriculum_phase}
+
         if terminated or terminated:
             info["episode"] = {
                 "r": self.episode_reward,
                 "l": self.current_step,
+                "tc": self.ml_wrapper.total_modes_changes,
             }
 
         return obs, float(np.squeeze(reward)), terminated, terminated, info
@@ -175,7 +219,8 @@ class JumperEnv(gym.Env):
         self.robot_model.update_robot_states(q, dq, f)
         self.robot_model.ml_states()
 
-        dummy_action = 0  # or self.action_space.sample()
+        dummy_action = self.action_space.sample()
+        # dummy_action = 0
         for _ in range(self.ml_wrapper.NP):
             obs, _, terminated, truncated, _ = self.step(dummy_action)
             if terminated or truncated:

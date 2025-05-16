@@ -83,7 +83,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--algo", type=str, required=True, choices=["ppo", "sac"])
-    parser.add_argument("--policy", type=str, required=True, choices=["mlp", "cnn"])
+    parser.add_argument(
+        "--policy", type=str, required=True, choices=["mlp", "cnn", "cnn3h"]
+    )
     parser.add_argument(
         "--config", type=str, required=True, help="Path to config YAML file."
     )

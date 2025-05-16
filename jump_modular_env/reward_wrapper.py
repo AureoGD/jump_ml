@@ -1,5 +1,6 @@
 import numpy as np
 from icecream import ic
+import random
 
 
 class RewardFcns:
@@ -27,7 +28,7 @@ class RewardFcns:
         self.min_mode_duration_weight = 5
         self.stagnation_penalty_weight = 5.0
         self.stand_reward_weight = 2
-        self.crouch_weight = 1.0
+        self.crouch_weight = 2.0
 
         """ rewards auxiliary constants"""
         # Body orientaton penality
@@ -51,7 +52,7 @@ class RewardFcns:
 
         self.prohibited_actions = [6, 7]
 
-        self.phase1_success_steps_threshold = 50
+        self.phase1_success_steps_threshold = 2
 
         self.max_com_drop = 0.2
 
@@ -64,9 +65,22 @@ class RewardFcns:
         self.last_action = -1
         self.total_mode_changes = 0
         self.standing_com_height = 0
-        self.curriculum_phase = 1
         self.stagnation_steps = 0
         self.phase1_success_steps = 0
+
+        beta = random.random()
+
+        if beta > 0.5:
+            self.curriculum_phase = 2
+            self.standing_com_height = 0.85
+        else:
+            self.curriculum_phase = 1
+            self.standing_com_height = 0.85
+
+        self.curriculum_phase = 1
+
+        ic(f"Start phaase: {self.curriculum_phase}")
+        # self.curriculum_phase = 1
 
     def update_variables(
         self, n_int, transtion_hist, foot_state, stag_metric, total_mod_chan, stag_steps
@@ -75,7 +89,7 @@ class RewardFcns:
         self.transition_history = transtion_hist
         self.foot_contact_state = foot_state
         self.stagnation_metric = stag_metric
-        self.total_modes_changes = total_mod_chan
+        self.total_mode_changes = total_mod_chan
         self.stagnation_steps = stag_steps
 
     def reward(self):
@@ -335,8 +349,10 @@ class RewardFcns:
         """
         if self.curriculum_phase == 1 and self.robot_states.mode in [0, 1]:
             return 1.0
+        if self.curriculum_phase == 1 and self.robot_states.mode == 2:
+            return -0.5
         if self.curriculum_phase == 2 and self.robot_states.mode == 2:
             return 1.0
         if self.curriculum_phase == 2 and self.robot_states.mode in [0, 1]:
-            return -5.0
+            return -1.0
         return 0

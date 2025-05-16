@@ -58,4 +58,11 @@ class TensorboardCallback(BaseCallback):
             current_lr = self.model.lr_schedule(self.num_timesteps)
             self.logger.record("train/current_learning_rate", current_lr)
 
+        # Extract episode-level info
+        infos = self.locals.get("infos", [])
+        if len(infos) > 0 and "episode" in infos[0]:
+            ep_info = infos[0]["episode"]
+            if "tc" in ep_info:
+                self.logger.record("rollout/total_mode_changes", ep_info["tc"])
+
         return True

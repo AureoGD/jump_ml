@@ -67,7 +67,7 @@ class MLWrapper:
 
         self.stagnation_metric = 0.0
         self.stagnation_steps = 0
-        self.stagnation_threshold = 150
+        self.stagnation_threshold = 25
         self.base_threshold = 0.002
         self.multiplier = 1.5
         self.delta_history = deque(maxlen=self.NP)
@@ -98,14 +98,15 @@ class MLWrapper:
         """
         Evaluate and normalize system states to create the observation dictionary.
         Returns:
-            - predictable: (15, NP + NF)
-            - nonpredictable: (11, NP)
+            - For "dnn": flattened predictable + nonpredictable
+            - For "cnn": unflattened (15, NP+NF) and (11, NP)
+            - For "cnn3h": three-head input: pred_past, pred_fut, nonpredictable
         """
         self.transition_history = self._check_transition()
         self.foot_contact_state = self._check_contact_mode()
         self.stagnation_metric = self._update_stagnation_metric()
 
-        # Stack current state
+        # Stack and normalize current state
         states = np.vstack(
             (
                 self.robot_states.r_vel,
@@ -127,31 +128,49 @@ class MLWrapper:
 
         norm_states = self.state_normalizer.normalize(states).flatten()  # shape (26,)
 
-        # Normalize predicted states for the next NF steps
+        # Normalize predicted future states (already has shape (15, NF))
         for t in range(self.NF):
             self.pred_st[:, t] = self.state_normalizer.normalize(self.pred_st[:, t])
 
-        # Append past states to history
-        self.predictable_history.appendleft(norm_states[: self.NUM_OBS_STATES_P])
-        self.nonpredictable_history.appendleft(norm_states[self.NUM_OBS_STATES_P :])
+        # Append current step to past history
+        self.predictable_history.appendleft(
+            norm_states[: self.NUM_OBS_STATES_P]
+        )  # (15,)
+        self.nonpredictable_history.appendleft(
+            norm_states[self.NUM_OBS_STATES_P :]
+        )  # (11,)
 
-        # Convert deques to arrays
-        past_pred_array = np.stack(self.predictable_history, axis=1)  # shape: (15, NP)
-        future_pred_array = self.pred_st  # shape: (15, NF)
-        predictable_obs = np.hstack([past_pred_array, future_pred_array])  # (15, NP+NF)
-
+        # Stack into time windows
+        past_pred_array = np.stack(self.predictable_history, axis=1)  # (15, NP)
+        future_pred_array = self.pred_st  # (15, NF)
         nonpredictable_obs = np.stack(self.nonpredictable_history, axis=1)  # (11, NP)
 
+        # Return format based on policy type
         if self.policy_type == "dnn":
             return {
-                "predictable": predictable_obs.flatten().astype(np.float32),
+                "predictable": np.hstack([past_pred_array, future_pred_array])
+                .flatten()
+                .astype(np.float32),
                 "nonpredictable": nonpredictable_obs.flatten().astype(np.float32),
             }
-        else:
+
+        elif self.policy_type == "cnn":
             return {
-                "predictable": predictable_obs.astype(np.float32),
-                "nonpredictable": nonpredictable_obs.astype(np.float32),
+                "predictable": np.hstack([past_pred_array, future_pred_array]).astype(
+                    np.float32
+                ),  # (15, NP+NF)
+                "nonpredictable": nonpredictable_obs.astype(np.float32),  # (11, NP)
             }
+
+        elif self.policy_type == "cnn3h":
+            return {
+                "pred_past": past_pred_array.astype(np.float32),  # (15, NP)
+                "pred_fut": future_pred_array.astype(np.float32),  # (15, NF)
+                "nonpredictable": nonpredictable_obs.astype(np.float32),  # (11, NP)
+            }
+
+        else:
+            raise ValueError(f"Unsupported policy type: {self.policy_type}")
 
     def _reward(self):
         self.reward_fcns.update_variables(
