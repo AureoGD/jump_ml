@@ -11,46 +11,39 @@ class StateNormalizer:
 
         # Use online normalization for uncertain features (e.g., velocities, CoM pos)
         self.use_online_norm = np.zeros(self.n_features, dtype=bool)
-        self.use_online_norm[[0, 1, 2, 3, 5, 9, 10, 11, 22, 23, 24, 25]] = (
+        self.use_online_norm[[0, 1, 2, 3, 5, 6, 7, 8, 9, 13, 14, 15]] = (
             True  # r_vel, r_pos, th, dth, dq
         )
+        # [r, dr, th, dth, b, db,][q, dq, qr, tau]
         # Fixed min/max for static features
         # fmt: off
         self.min_vals = np.array(
             [
-                -5, -5,                # r_vel 0 1
-                 0,   0,               # r_pos 2 3
+                 0,   0,               # r_pos 0 1
+                -5, -5,                # r_vel 2 3
                 -np.pi,                # th 4
                 -5,                    # dth 5
-                -0.50, -2.2, -1.1,     # q 6 7 8
-                -30, -30, -30,         # dq 9 10 11
-                -0.50, -2.2, -1.1,     # qr 12 13 14
-                -50.0 , -50.0, -50.0,  # tau 15 16 17
-                self.n_modes,          # mode 18 
-                self.n_th,             # transition history 19 
-                self.fc_modes,         # contact modes 20 
-                0,                     # staganation metric 21
-                -5, -5,                # b_vel 22 23
-                0,   0,                # b_pos 24 25
+                 0, 0,                # b_pos 6 7
+                -5, -5,                # b_vel 8 9      
+                -0.50, -2.2, -1.1,     # q 10 11 12
+                -30, -30, -30,         # dq 13 14 15
+                -0.50, -2.2, -1.1,     # qr 16 17 18
+                -50.0 , -50.0, -50.0,  # tau 19 20 21
             ]
         )
 
         self.max_vals = np.array(
             [
-                5, 5,                # r_vel
                 100,   2,            # r_pos
+                5, 5,                # r_vel
                 np.pi,               # th
                 5,                   # dth
+                100,   2,            # b_pos
+                5, 5,                # b_vel
                 1.20, 0.50, 1.10,    # q
                 30, 30, 30,          # dq
                 1.20, 0.50, 1.10,    # qr
                 50.0 , 50.0, 50.0,   # tau 
-                0,                   # mode
-                0,                   # transition history
-                0,                   # contact modes
-                1,                   # staganation metric
-                5, 5,                # b_vel
-                100,   2,            # b_pos
             ]
         )
         # fmt: on
@@ -71,8 +64,7 @@ class StateNormalizer:
         for i in range(self.n_features):
             if not self.use_online_norm[i]:
                 self.alpha[i] = 2.0 / (self.max_vals[i] - self.min_vals[i])
-                self.beta[i] = -(self.max_vals[i] + self.min_vals[i]) / (
-                    self.max_vals[i] - self.min_vals[i])
+                self.beta[i] = -(self.max_vals[i] + self.min_vals[i]) / (self.max_vals[i] - self.min_vals[i])
 
     def update(self, x, momentum=0.001):
         for i in range(self.n_features):

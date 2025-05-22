@@ -19,3 +19,5 @@ validate_mpc/mpc_data
 # Ignore VS Code settings
 .vscode/
 test.py
+
+.style.yapf

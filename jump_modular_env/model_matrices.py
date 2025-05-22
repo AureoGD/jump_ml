@@ -130,26 +130,50 @@ class ModelMatrices:
         # Update HT_com3
         self.HT_com3[0, 0] = sin_vals[2]
         self.HT_com3[0, 1] = cos_vals[2]
-        self.HT_com3[0, 3] = 0.45 * sin_vals[0] + 0.065 * cos_vals[2] + 0.5 * sin_vals[1]
+        self.HT_com3[0, 3] = (
+            0.45 * sin_vals[0] + 0.065 * cos_vals[2] + 0.5 * sin_vals[1]
+        )
         self.HT_com3[2, 0] = -cos_vals[2]
         self.HT_com3[2, 1] = sin_vals[2]
-        self.HT_com3[2, 3] = 0.065 * sin_vals[2] - 0.45 * cos_vals[0] - 0.5 * cos_vals[1]
+        self.HT_com3[2, 3] = (
+            0.065 * sin_vals[2] - 0.45 * cos_vals[0] - 0.5 * cos_vals[1]
+        )
 
         # Update HT_toe
         self.HT_toe[0, 0] = sin_vals[2]
         self.HT_toe[0, 1] = cos_vals[2]
-        self.HT_toe[0, 3] = 0.45 * sin_vals[0] + 0.26 * cos_vals[2] + 0.05 * sin_vals[2] + 0.50 * sin_vals[1]
+        self.HT_toe[0, 3] = (
+            0.45 * sin_vals[0]
+            + 0.26 * cos_vals[2]
+            + 0.05 * sin_vals[2]
+            + 0.50 * sin_vals[1]
+        )
         self.HT_toe[2, 0] = -cos_vals[2]
         self.HT_toe[2, 1] = sin_vals[2]
-        self.HT_toe[2, 3] = 0.26 * sin_vals[2] - 0.05 * cos_vals[2] - 0.45 * cos_vals[0] - 0.5 * cos_vals[1]
+        self.HT_toe[2, 3] = (
+            0.26 * sin_vals[2]
+            - 0.05 * cos_vals[2]
+            - 0.45 * cos_vals[0]
+            - 0.5 * cos_vals[1]
+        )
 
         # Update HT_heel
         self.HT_heel[0, 0] = sin_vals[2]
         self.HT_heel[0, 1] = cos_vals[2]
-        self.HT_heel[0, 3] = 0.45 * sin_vals[0] - 0.13 * cos_vals[2] + 0.05 * sin_vals[2] + 0.50 * sin_vals[1]
+        self.HT_heel[0, 3] = (
+            0.45 * sin_vals[0]
+            - 0.13 * cos_vals[2]
+            + 0.05 * sin_vals[2]
+            + 0.50 * sin_vals[1]
+        )
         self.HT_heel[2, 0] = -cos_vals[2]
         self.HT_heel[2, 1] = sin_vals[2]
-        self.HT_heel[2, 3] = -0.13 * sin_vals[2] - 0.05 * cos_vals[2] - 0.45 * cos_vals[0] - 0.5 * cos_vals[1]
+        self.HT_heel[2, 3] = (
+            -0.13 * sin_vals[2]
+            - 0.05 * cos_vals[2]
+            - 0.45 * cos_vals[0]
+            - 0.5 * cos_vals[1]
+        )
 
         # Update HT_knee
         self.HT_knee[0, 0] = sin_vals[1]
@@ -173,19 +197,43 @@ class ModelMatrices:
         cos_vals = self.cos_vals
 
         # Jacobian for HT_toe
-        self.J_toe[0, 0] = 0.45 * cos_vals[0] - 0.26 * sin_vals[2] + 0.05 * cos_vals[2] + 0.50 * cos_vals[1]
+        self.J_toe[0, 0] = (
+            0.45 * cos_vals[0]
+            - 0.26 * sin_vals[2]
+            + 0.05 * cos_vals[2]
+            + 0.50 * cos_vals[1]
+        )
         self.J_toe[0, 1] = -0.26 * sin_vals[2] + 0.05 * cos_vals[2] + 0.50 * cos_vals[1]
         self.J_toe[0, 2] = -0.26 * sin_vals[2] + 0.05 * cos_vals[2]
-        self.J_toe[2, 0] = 0.26 * cos_vals[2] + 0.05 * sin_vals[2] + 0.45 * sin_vals[0] + 0.50 * sin_vals[1]
+        self.J_toe[2, 0] = (
+            0.26 * cos_vals[2]
+            + 0.05 * sin_vals[2]
+            + 0.45 * sin_vals[0]
+            + 0.50 * sin_vals[1]
+        )
         self.J_toe[2, 1] = 0.26 * cos_vals[2] + 0.05 * sin_vals[2] + 0.50 * sin_vals[1]
         self.J_toe[2, 2] = 0.26 * cos_vals[2] + 0.05 * sin_vals[2]
 
         # Jacobian for HT_heel
-        self.J_heel[0, 0] = 0.45 * cos_vals[0] - 0.13 * sin_vals[2] + 0.05 * cos_vals[2] + 0.50 * cos_vals[1]
-        self.J_heel[0, 1] = -0.13 * sin_vals[2] + 0.05 * cos_vals[2] + 0.50 * cos_vals[1]
+        self.J_heel[0, 0] = (
+            0.45 * cos_vals[0]
+            - 0.13 * sin_vals[2]
+            + 0.05 * cos_vals[2]
+            + 0.50 * cos_vals[1]
+        )
+        self.J_heel[0, 1] = (
+            -0.13 * sin_vals[2] + 0.05 * cos_vals[2] + 0.50 * cos_vals[1]
+        )
         self.J_heel[0, 2] = -0.13 * sin_vals[2] + 0.05 * cos_vals[2]
-        self.J_heel[2, 0] = -0.13 * cos_vals[2] + 0.05 * sin_vals[2] + 0.45 * sin_vals[0] + 0.50 * sin_vals[1]
-        self.J_heel[2, 1] = -0.13 * cos_vals[2] + 0.05 * sin_vals[2] + 0.50 * sin_vals[1]
+        self.J_heel[2, 0] = (
+            -0.13 * cos_vals[2]
+            + 0.05 * sin_vals[2]
+            + 0.45 * sin_vals[0]
+            + 0.50 * sin_vals[1]
+        )
+        self.J_heel[2, 1] = (
+            -0.13 * cos_vals[2] + 0.05 * sin_vals[2] + 0.50 * sin_vals[1]
+        )
         self.J_heel[2, 2] = -0.13 * cos_vals[2] + 0.05 * sin_vals[2]
 
         # Update J_ankle
@@ -230,17 +278,22 @@ class ModelMatrices:
             rot = self.HT[idx][0:3, 0:3]
             trans = self.HT[idx][0:3, 3]
             Ib += rot @ self.Inertia[idx] @ rot.transpose() + (
-                self.masses[idx] * np.dot(trans, trans) * np.eye(3) - np.outer(trans, trans)
+                self.masses[idx] * np.dot(trans, trans) * np.eye(3)
+                - np.outer(trans, trans)
             )
             # Ib += rot @ self.Inertia[idx] @ rot.transpose() + self.masses[idx] * sk_mtx @ sk_mtx.transpose()
 
         return Ib
 
     def _skew_mtx(self, vet):
-        return np.array([[0, -vet[2], vet[1]], [vet[2], 0, -vet[0]], [-vet[1], vet[0], 0]])
+        return np.array(
+            [[0, -vet[2], vet[1]], [vet[2], 0, -vet[0]], [-vet[1], vet[0], 0]]
+        )
 
     def com_jacobian(self):
-        return (self.J_com1 * self.m1 + self.J_com2 * self.m2 + self.J_com3 * self.m3) / self.m
+        return (
+            self.J_com1 * self.m1 + self.J_com2 * self.m2 + self.J_com3 * self.m3
+        ) / self.m
 
 
 # model = ModelMatrices()

@@ -7,9 +7,11 @@ from matplotlib.widgets import SpanSelector
 # -------------------
 # CONFIG
 # -------------------
-file_path = "stagnation_classifier/raw_episodes/episode_039.pkl"
+file_path = "stagnation_classifier/raw_episodes/episode_019.pkl"
 save_dir = "stagnation_classifier/labeled_episodes_manual"
+curve_dir = "stagnation_classifier/labeled_curves"
 os.makedirs(save_dir, exist_ok=True)
+os.makedirs(curve_dir, exist_ok=True)
 
 # -------------------
 # LOAD
@@ -24,15 +26,15 @@ T = len(raw_trimmed)
 time = np.arange(T)
 
 # -------------------
-# EXTRACT SIGNALS
+# EXTRACT SIGNALS (adjust indices if needed)
 # -------------------
 signals = {
-    "pos_x": np.array([step["nonpredictable"][9, -1, 0] for step in raw_trimmed]),
-    "pos_z": np.array([step["nonpredictable"][10, -1, 0] for step in raw_trimmed]),
-    "theta_y": np.array([step["predictable"][4, -1, 0] for step in raw_trimmed]),
-    "vel_x": np.array([step["nonpredictable"][7, -1, 0] for step in raw_trimmed]),
-    "vel_z": np.array([step["nonpredictable"][8, -1, 0] for step in raw_trimmed]),
-    "dtheta_y": np.array([step["predictable"][5, -1, 0] for step in raw_trimmed]),
+    "pos_x": np.array([step["base_past"][0, -1] for step in raw_trimmed]),  # r_x
+    "pos_z": np.array([step["base_past"][5, -1] for step in raw_trimmed]),  # b_z
+    "theta_y": np.array([step["base_past"][4, -1] for step in raw_trimmed]),  # theta y
+    "vel_x": np.array([step["base_past"][1, -1] for step in raw_trimmed]),  # r_vx
+    "vel_z": np.array([step["base_past"][3, -1] for step in raw_trimmed]),  # r_vz
+    "dtheta_y": np.array([step["base_past"][3, -1] for step in raw_trimmed]),  # dtheta y
 }
 
 # -------------------
@@ -72,47 +74,53 @@ def select_stagnation(signal_name, signal_data):
     plt.close(fig)
 
 
-# Run selection for each signal
+# Run interactive selection for each signal
 for name, sig in signals.items():
     print(f"\n🖱️  Select stagnation for {name}. Close the window to continue.")
     select_stagnation(name, sig)
 
 # -------------------
-# COMBINE SELECTIONS
+# COMBINE SELECTIONS INTO STAGNATION CURVE
 # -------------------
+n_signals = len(signals)
 masks = []
-for name in signals:
-    mask = np.zeros(T, dtype=bool)
-    for start, end in selections[name]:
-        mask[start:end] = True
-    masks.append(mask)
 
-final_mask = np.logical_and.reduce(masks).astype(int)
+for name in signals:
+    mask = np.zeros(T, dtype=float)
+    for start, end in selections[name]:
+        mask[start:end] = 1.0
+    masks.append(mask / n_signals)  # Each signal contributes equally
+
+# Compute stagnation curve
+stagnation_curve = np.sum(masks, axis=0)  # Shape (T,), values in [0, 1]
+
+# Save the curve separately (optional)
+curve_filename = os.path.basename(file_path).replace("episode", "curve").replace(".pkl", ".npy")
+np.save(os.path.join(curve_dir, curve_filename), stagnation_curve)
+print(f"📈 Saved stagnation curve to {curve_filename}")
 
 # -------------------
-# FINAL VISUALIZATION
+# VISUALIZATION
 # -------------------
 fig, ax = plt.subplots(figsize=(14, 5))
 ax.plot(time, signals["pos_x"], label="pos_x", color="black")
 ax.axvline(transition_step - 50, color="red", linestyle="--", label="Transition")
-ax.set_title("Final Combined Stagnation Regions (Intersection)")
+ax.set_title("Stagnation Score Curve (Soft Labels)")
 ax.set_xlabel("Time Step")
 ax.set_ylabel("pos_x")
 ax.grid(True)
 
-# Shade regions
-in_stag = False
-for t in range(T):
-    if final_mask[t] and not in_stag:
-        start = t
-        in_stag = True
-    elif not final_mask[t] and in_stag:
-        ax.axvspan(start, t, color="gray", alpha=0.3)
-        in_stag = False
-if in_stag:
-    ax.axvspan(start, T, color="gray", alpha=0.3)
+# Overlay stagnation curve
+ax2 = ax.twinx()
+ax2.plot(time, stagnation_curve, label="Stagnation Curve", color="purple", linewidth=2, alpha=0.7)
+ax2.set_ylabel("Stagnation Score (0 to 1)")
+ax2.set_ylim(0, 1)
 
-ax.legend()
+# Combine legends
+lines1, labels1 = ax.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax2.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+
 plt.tight_layout()
 plt.show()
 
@@ -121,13 +129,14 @@ plt.show()
 # -------------------
 labeled_data = []
 for i in range(T):
-    labeled_data.append(
-        {
-            "predictable": raw_trimmed[i]["predictable"],
-            "nonpredictable": raw_trimmed[i]["nonpredictable"],
-            "label": int(final_mask[i]),
-        }
-    )
+    labeled_data.append({
+        "base_past": raw_trimmed[i]["base_past"],
+        "joint_past": raw_trimmed[i]["joint_past"],
+        "comp_past": raw_trimmed[i]["comp_past"],
+        "base_future": raw_trimmed[i]["base_future"],
+        "joint_future": raw_trimmed[i]["joint_future"],
+        "label": float(stagnation_curve[i]),  # Save the soft label directly
+    })
 
 base_name = os.path.basename(file_path).replace("episode", "use_label")
 save_path = os.path.join(save_dir, base_name)

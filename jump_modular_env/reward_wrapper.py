@@ -4,6 +4,7 @@ import random
 
 
 class RewardFcns:
+
     def __init__(self, model_states, hor_lenght, debug=True):
         self.robot_states = model_states
 
@@ -17,7 +18,6 @@ class RewardFcns:
         self.stagnation_metric = 0
         self.total_modes_changes = 0
         self.n_int = 0
-
         """ reward weights  """
         self.body_height_weight = 2
         self.body_orietation_weight = 3.5
@@ -29,7 +29,6 @@ class RewardFcns:
         self.stagnation_penalty_weight = 5.0
         self.stand_reward_weight = 2
         self.crouch_weight = 2.0
-
         """ rewards auxiliary constants"""
         # Body orientaton penality
         self.th_threshold = 0.65  # Angle (in rad) where penalty begins
@@ -55,7 +54,6 @@ class RewardFcns:
         self.phase1_success_steps_threshold = 2
 
         self.max_com_drop = 0.2
-
         """ rewards auxiliary variables """
         self.reset_variables()
 
@@ -82,9 +80,7 @@ class RewardFcns:
         ic(f"Start phaase: {self.curriculum_phase}")
         # self.curriculum_phase = 1
 
-    def update_variables(
-        self, n_int, transtion_hist, foot_state, stag_metric, total_mod_chan, stag_steps
-    ):
+    def update_variables(self, n_int, transtion_hist, foot_state, stag_metric, total_mod_chan, stag_steps):
         self.n_int = n_int
         self.transition_history = transtion_hist
         self.foot_contact_state = foot_state
@@ -107,21 +103,13 @@ class RewardFcns:
         self.rewards[1] = self.body_orietation_weight * self._body_orientation_penalty()
 
         # Penalize hight PO changes in short term
-        self.rewards[2] = (
-            self.short_term_mode_transition_weight
-            * self._short_term_mode_transition_penalty()
-        )
+        self.rewards[2] = (self.short_term_mode_transition_weight * self._short_term_mode_transition_penalty())
 
         # Penalize hight PO changes in long term
-        self.rewards[3] = (
-            self.long_term_mode_transition_weight
-            * self._long_term_mode_transition_penalty()
-        )
+        self.rewards[3] = (self.long_term_mode_transition_weight * self._long_term_mode_transition_penalty())
 
         # Penalize if the PO not stay for a minimum period
-        self.rewards[4] = (
-            self.min_mode_duration_weight * self._minimum_mode_duration_penalty()
-        )
+        self.rewards[4] = (self.min_mode_duration_weight * self._minimum_mode_duration_penalty())
 
         # Penalizes invalid PO choices due to the robot configuration: contact/non-contact
         self.rewards[5] = self.invalid_po_weight * self._invalid_po_penalty()
@@ -209,9 +197,7 @@ class RewardFcns:
         if self.invalid_po_steps > self.invalid_po_grace_period:
             max_steps = self.invalid_po_grace_period * 3
             over_steps = self.invalid_po_steps - self.invalid_po_grace_period
-            normalized_penalty = -min(
-                over_steps / (max_steps - self.invalid_po_grace_period), 1.0
-            )
+            normalized_penalty = -min(over_steps / (max_steps - self.invalid_po_grace_period), 1.0)
             return normalized_penalty
         return 0
 
@@ -263,10 +249,6 @@ class RewardFcns:
             return 0.0
         else:
             return -1 * self.stagnation_metric
-        # elif self.stagnation_metric < 0.1:
-        #     return -1 * self.stagnation_metric
-        # else:
-        #     return -1 / (1 + np.exp(-20 * (self.stagnation_metric - 0.2)))
 
     def _stand_stability_reward(self):
         """
@@ -320,19 +302,12 @@ class RewardFcns:
             return 0
 
     def _curriculum_learning_check(self):
-        if (
-            self.curriculum_phase == 1
-            and self.phase1_success_steps > self.phase1_success_steps_threshold
-        ):
+        if (self.curriculum_phase == 1 and self.phase1_success_steps > self.phase1_success_steps_threshold):
             ic(f"End of phase 1: {self.n_int}")
             self.curriculum_phase = 2
             self.standing_com_height = self.robot_states.r_pos[1, 0]
             return 100
-        elif (
-            self.curriculum_phase == 2
-            and self.stagnation_steps > 0
-            and self.robot_states.r_pos[1, 0] < 0.65
-        ):
+        elif (self.curriculum_phase == 2 and self.stagnation_steps > 0 and self.robot_states.r_pos[1, 0] < 0.65):
             ic(f"End of phase 2: {self.n_int}")
             self.curriculum_phase = 3
             return 100

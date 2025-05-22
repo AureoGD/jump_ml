@@ -5,17 +5,18 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 import torch
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 class StagnationDataset(Dataset):
-    def __init__(
-        self,
-        file_list,
-        selected_predictable_idx,
-        selected_nonpredictable_idx,
-        augment=False,
-    ):
+
+    def __init__(self, file_list, augment=False):
+        """
+        Dataset for stagnation regression using multihead input.
+
+        Args:
+            file_list (list): List of .pkl file paths.
+            augment (bool): If True, apply Gaussian noise to the input data.
+        """
         self.samples = []
         self.labels = []
         self.augment = augment
@@ -25,103 +26,82 @@ class StagnationDataset(Dataset):
                 episode = pickle.load(f)
 
             for step in episode:
-                pred = step["predictable"][
-                    selected_predictable_idx, :, 0
-                ]  # shape: (num_selected, time)
-                nonp = step["nonpredictable"][
-                    selected_nonpredictable_idx, :, 0
-                ]  # shape: (num_selected, time)
-                label = step["label"]
+                base = step["base_past"]  # (6, T) including CoM
+                joint = step["joint_past"]  # (12, T)
+                comp = step["comp_past"]  # (5, T)
+                label = step["label"]  # float label between 0 and 1
+
+                # Check shapes
+                assert base.shape[0] == 10, f"base_past has {base.shape[0]} channels, expected 10"
+                assert joint.shape[0] == 12, f"joint_past has {joint.shape[0]} channels, expected 12"
+                assert comp.shape[0] == 5, f"comp_past has {comp.shape[0]} channels, expected 5"
 
                 if self.augment:
-                    pred, nonp = self.apply_augmentation(pred, nonp)
+                    base, joint, comp = self.apply_augmentation(base, joint, comp)
 
-                self.samples.append((pred, nonp))
+                self.samples.append((base, joint, comp))
                 self.labels.append(label)
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        pred, nonp = self.samples[idx]
+        base, joint, comp = self.samples[idx]
         label = self.labels[idx]
         return {
-            "predictable": torch.tensor(pred, dtype=torch.float32),
-            "nonpredictable": torch.tensor(nonp, dtype=torch.float32),
-            "label": torch.tensor(label, dtype=torch.long),
+            "base_past": torch.tensor(base, dtype=torch.float32),
+            "joint_past": torch.tensor(joint, dtype=torch.float32),
+            "comp_past": torch.tensor(comp, dtype=torch.float32),
+            "label": torch.tensor(label, dtype=torch.float32),
         }
 
-    def apply_augmentation(self, pred, nonp):
-        noise_pred = pred + np.random.normal(0, 0.001, size=pred.shape)
-        noise_nonp = nonp + np.random.normal(0, 0.001, size=nonp.shape)
-        return noise_pred, noise_nonp
+    def apply_augmentation(self, base, joint, comp):
+        noise_base = base + np.random.normal(0, 0.001, size=base.shape)
+        noise_joint = joint + np.random.normal(0, 0.001, size=joint.shape)
+        noise_comp = comp + np.random.normal(0, 0.001, size=comp.shape)
+        return noise_base, noise_joint, noise_comp
 
 
 def load_dataset(manual_dir, test_size=0.2, seed=42, augment=False):
-    manual_files = sorted(
-        [
-            os.path.join(manual_dir, f)
-            for f in os.listdir(manual_dir)
-            if f.endswith(".pkl")
-        ]
-    )
+    files = sorted([os.path.join(manual_dir, f) for f in os.listdir(manual_dir) if f.endswith(".pkl")])
 
-    all_files = manual_files
-    train_files, test_files = train_test_split(
-        all_files, test_size=test_size, random_state=seed
-    )
+    train_files, test_files = train_test_split(files, test_size=test_size, random_state=seed)
 
-    # Indices of selected features
-    pred_indices = [4, 5]  # theta_y, dtheta_y
-    nonp_indices = [7, 8, 9, 10, 3]  # vel_x, vel_z, pos_x, pos_z, controller_mode
-
-    train_dataset = StagnationDataset(
-        train_files, pred_indices, nonp_indices, augment=augment
-    )
-    test_dataset = StagnationDataset(
-        test_files, pred_indices, nonp_indices, augment=False
-    )
+    train_dataset = StagnationDataset(train_files, augment=augment)
+    test_dataset = StagnationDataset(test_files, augment=False)
 
     return train_dataset, test_dataset
 
 
-# import jumpstat  # Show the datasets to the user
-
-
 def summarize_dataset(dataset, name):
-    labels = [sample["label"].item() for sample in dataset]
-    total = len(labels)
-    pos = sum(labels)
-    neg = total - pos
-    return {"Name": name, "Total": total, "Positive": pos, "Negative": neg}
+    labels = np.array([sample["label"].item() for sample in dataset])
+    return {
+        "Name": name,
+        "Total": len(labels),
+        "Mean Label": labels.mean(),
+        "Min": labels.min(),
+        "Max": labels.max(),
+    }
 
 
-# Load and summarize for display
-manual_dir = "stagnation_classifier/labeled_episodes_manual"
-train_dataset, test_dataset = load_dataset(manual_dir)
+if __name__ == "__main__":
+    manual_dir = "stagnation_classifier/labeled_episodes_manual"
+    train_dataset, test_dataset = load_dataset(manual_dir)
 
-summary = [
-    summarize_dataset(train_dataset, "Train"),
-    summarize_dataset(test_dataset, "Test"),
-]
+    summary = [
+        summarize_dataset(train_dataset, "Train"),
+        summarize_dataset(test_dataset, "Test"),
+    ]
 
+    df = pd.DataFrame(summary)
+    print(df)
 
-# Summarized data
-summary = [
-    {"Name": "Train", "Total": 4825, "Positive": 1364, "Negative": 3461},
-    {"Name": "Test", "Total": 1207, "Positive": 321, "Negative": 886},
-]
+    import matplotlib.pyplot as plt
 
-# Create DataFrame
-df = pd.DataFrame(summary)
-
-# # Plot table
-# fig, ax = plt.subplots(figsize=(6, 2))
-# ax.axis("off")
-# table = ax.table(cellText=df.values, colLabels=df.columns, loc="center")
-# table.auto_set_font_size(False)
-# table.set_fontsize(12)
-# table.scale(1, 2)
-
-# plt.tight_layout()
-# plt.show()
+    plt.figure(figsize=(6, 4))
+    plt.bar(df["Name"], df["Mean Label"], color="purple", alpha=0.7)
+    plt.title("Average Stagnation Score per Dataset")
+    plt.ylabel("Average Label Value (0-1)")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.show()

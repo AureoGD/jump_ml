@@ -13,10 +13,11 @@ from .physics_engine import PhysicsEngine
 from .disturbance import Disturbance
 from .logger import Logger
 from .jump_model import RobotStates, JumpModel
-from .ml_wrapper import MLWrapper
+from .ml_wrapper_v2 import MLWrapper
 
 
 class JumperEnv(gym.Env):
+
     def __init__(
         self,
         policy_type="mlp",
@@ -39,12 +40,8 @@ class JumperEnv(gym.Env):
 
         self.robot_states = RobotStates()
         self.robot_model = JumpModel(_robot_states=self.robot_states)
-        self.ml_wrapper = MLWrapper(
-            _robot_states=self.robot_states, debug=self.debug, policy_type=policy_type
-        )
-        self.robot_model.set_pred_states_dim(
-            self.ml_wrapper.NUM_OBS_STATES_P, self.ml_wrapper.NF
-        )
+        self.ml_wrapper = MLWrapper(_robot_states=self.robot_states, debug=self.debug, policy_type=policy_type)
+        self.robot_model.set_pred_states_dim(self.ml_wrapper.NUM_OBS_STATES_P, self.ml_wrapper.NF, augmented=True)
 
         self.physics = PhysicsEngine(self.robot_model, render)
         self.disturbance = Disturbance(self.robot_model)
@@ -58,7 +55,7 @@ class JumperEnv(gym.Env):
             self.action_space = gym.spaces.Box(
                 low=0.0,
                 high=float(self.ml_wrapper.NUM_MODES - 1),
-                shape=(1,),
+                shape=(1, ),
                 dtype=np.float32,
             )
 
@@ -69,84 +66,132 @@ class JumperEnv(gym.Env):
 
     def _setup_observation_space(self):
         if self.policy_type == "cnn":
-            self.observation_space = spaces.Dict(
-                {
-                    "predictable": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_P,
-                            self.ml_wrapper.NP + self.ml_wrapper.NF,
-                        ),
-                        dtype=np.float32,
+            self.observation_space = spaces.Dict({
+                "predictable":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        self.ml_wrapper.NUM_OBS_STATES_P,
+                        self.ml_wrapper.NP + self.ml_wrapper.NF,
                     ),
-                    "nonpredictable": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_NP,
-                            self.ml_wrapper.NP,
-                        ),
-                        dtype=np.float32,
+                    dtype=np.float32,
+                ),
+                "nonpredictable":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        self.ml_wrapper.NUM_OBS_STATES_NP,
+                        self.ml_wrapper.NP,
                     ),
-                }
-            )
+                    dtype=np.float32,
+                ),
+            })
         elif self.policy_type == "cnn3h":
-            self.observation_space = spaces.Dict(
-                {
-                    "pred_past": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_P,
-                            self.ml_wrapper.NP,
-                        ),
-                        dtype=np.float32,
+            self.observation_space = spaces.Dict({
+                "pred_past":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        self.ml_wrapper.NUM_OBS_STATES_P,
+                        self.ml_wrapper.NP,
                     ),
-                    "pred_fut": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_P,
-                            self.ml_wrapper.NF,
-                        ),
-                        dtype=np.float32,
+                    dtype=np.float32,
+                ),
+                "pred_fut":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        self.ml_wrapper.NUM_OBS_STATES_P,
+                        self.ml_wrapper.NF,
                     ),
-                    "nonpredictable": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_NP,
-                            self.ml_wrapper.NP,
-                        ),
-                        dtype=np.float32,
+                    dtype=np.float32,
+                ),
+                "nonpredictable":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        self.ml_wrapper.NUM_OBS_STATES_NP,
+                        self.ml_wrapper.NP,
                     ),
-                }
-            )
+                    dtype=np.float32,
+                ),
+            })
+        elif self.policy_type == "multihead":
+            self.observation_space = spaces.Dict({
+                "base_past":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        10,
+                        self.ml_wrapper.NP,
+                    ),  # hard code for now [r, dr, b, db, th, dth]
+                    dtype=np.float32,
+                ),
+                "base_future":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        10,
+                        self.ml_wrapper.NF,
+                    ),  # hard code for now [r, dr, b, db, th, dth]
+                    dtype=np.float32,
+                ),
+                "joint_past":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        12,
+                        self.ml_wrapper.NP,
+                    ),  # hard code for now [q, dq, qr, tau]
+                    dtype=np.float32,
+                ),
+                "joint_future":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        12,
+                        self.ml_wrapper.NF,
+                    ),  # hard code for now [q, dq, qr, tau]
+                    dtype=np.float32,
+                ),
+                "comp_past":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(
+                        5,
+                        self.ml_wrapper.NP,
+                    ),  # hard code for now [stag, phase, trans_h, foot_st, sucess]
+                    dtype=np.float32,
+                ),
+            })
         else:
             # Flattened MLP input
-            self.observation_space = spaces.Dict(
-                {
-                    "predictable": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_NP
-                            * (self.ml_wrapper.NP + 1 + self.ml_wrapper.NF),
-                        ),
-                        dtype=np.float32,
-                    ),
-                    "nonpredictable": spaces.Box(
-                        low=self.ml_wrapper.OBS_LOW_VALUE,
-                        high=self.ml_wrapper.OBS_HIGH_VALUE,
-                        shape=(
-                            self.ml_wrapper.NUM_OBS_STATES_NP
-                            * (self.ml_wrapper.NP + 1),
-                        ),
-                        dtype=np.float32,
-                    ),
-                }
-            )
+            self.observation_space = spaces.Dict({
+                "predictable":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(self.ml_wrapper.NUM_OBS_STATES_NP * (self.ml_wrapper.NP + 1 + self.ml_wrapper.NF), ),
+                    dtype=np.float32,
+                ),
+                "nonpredictable":
+                spaces.Box(
+                    low=self.ml_wrapper.OBS_LOW_VALUE,
+                    high=self.ml_wrapper.OBS_HIGH_VALUE,
+                    shape=(self.ml_wrapper.NUM_OBS_STATES_NP * (self.ml_wrapper.NP + 1), ),
+                    dtype=np.float32,
+                ),
+            })
 
     def step(self, action):
         # mode = self.robot_model.state_machine(action)
@@ -161,9 +206,7 @@ class JumperEnv(gym.Env):
                 action_value = action[0]
             else:
                 action_value = action
-            action = int(
-                np.clip(np.round(action_value), 0, self.ml_wrapper.NUM_MODES - 1)
-            )
+            action = int(np.clip(np.round(action_value), 0, self.ml_wrapper.NUM_MODES - 1))
 
         self.robot_model.new_action(action)
 
@@ -189,7 +232,13 @@ class JumperEnv(gym.Env):
         self.current_step += 1
         self.episode_reward += reward
 
-        info = {"Phase": self.ml_wrapper.reward_fcns.curriculum_phase}
+        # info = {"Phase": self.ml_wrapper.reward_fcns.curriculum_phase}
+
+        info = {
+            "stagnation": self.ml_wrapper.stag_value,
+            "success": self.ml_wrapper.success_rate,
+            "phase": self.ml_wrapper.reward_fcns.curriculum_phase,
+        }
 
         if terminated or terminated:
             info["episode"] = {
