@@ -16,3 +16,5 @@ stagnation_classifier/models
 # Ignore VS Code settings
 .vscode/
 .style.yapf
+
+models

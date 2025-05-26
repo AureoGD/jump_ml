@@ -129,11 +129,13 @@ class MLWrapper:
 
         comp_state = np.vstack((
             np.array([[self.stagnation_metric]]),
-            np.array([[self.reward_fcns.curriculum_phase]]),
-            self.robot_states.mode,
+            np.array([[self.reward_fcns.curriculum_phase / 2]]),
+            self.robot_states.mode / 4,
             self.foot_contact_state,
             np.array([[self.success_rate]]),
         ))  # shape (5, 1)
+
+        # comp_state = np.random.uniform(low=-1.0, high=1.0, size=(5, 1))
 
         # Normalize
         states = np.vstack((base_states, joint_states))
@@ -236,7 +238,7 @@ class MLWrapper:
         else:
             return 0
 
-    def _compute_success_from_cost(self, alpha=0.1):
+    def _compute_success_from_cost(self, alpha=0.01):
         """
         Compute success metric from QP cost.
         Args:
@@ -245,7 +247,9 @@ class MLWrapper:
         Returns:
             float: Success in [0, 1].
         """
-        success = np.exp(-alpha * self.robot_states.j_val[0, 0])
+        # success = np.exp(-alpha * self.robot_states.j_val[0, 0])
+        success = np.clip(np.exp(-alpha * self.robot_states.j_val[0, 0]), 0.0, 1.0)
+
         return success
 
     def update_pred_states(self, _pred_states):
