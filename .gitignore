@@ -5,19 +5,14 @@ __pycache__/
 *.pyc
 
 # Ignore specific folders
-Data/
-models/
 rgc_controller/build
 stagnation_classifier/raw_episodes
 stagnation_classifier/training_data
 stagnation_classifier/videos
 stagnation_classifier/labeled_episodes_manual
-validate_mpc/performance_video
-validate_mpc/tensorboard
-validate_mpc/mpc_data
+stagnation_classifier/labeled_curves
+stagnation_classifier/models
 
 # Ignore VS Code settings
 .vscode/
-test.py
-
 .style.yapf
