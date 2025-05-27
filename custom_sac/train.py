@@ -16,7 +16,7 @@ chkpt_dir = f"models/sac_{timestamp}"
 os.makedirs(chkpt_dir, exist_ok=True)
 
 env = JumperEnv(policy_type="multihead", discrete_actions=False)
-agent = Agent(env=env, chkpt_dir=chkpt_dir, alpha=0.0001)
+agent = Agent(env=env, chkpt_dir=chkpt_dir, alpha=0.0001, use_encoder=True)
 
 n_episodes = 1000
 max_steps = 2000

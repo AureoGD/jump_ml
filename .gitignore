@@ -18,3 +18,5 @@ stagnation_classifier/models
 .style.yapf
 
 models
+runs    
+Data
