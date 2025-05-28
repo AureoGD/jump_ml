@@ -53,7 +53,7 @@ model.set_logger(new_logger)
 # ─────────────────────────────────────────────
 # Train
 # ─────────────────────────────────────────────
-model.learn(total_timesteps=1_000_000)
+model.learn(total_timesteps=60_000)
 
 # ─────────────────────────────────────────────
 # Save the model

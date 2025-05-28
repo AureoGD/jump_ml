@@ -5,8 +5,8 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 from torch.utils.tensorboard import SummaryWriter
 
-from custom_sac.networks import ActorNetwork, CriticNetwork
-from custom_sac.replay_buffer import ReplayBuffer
+from .networks import ActorNetwork, CriticNetwork
+from .replay_buffer import ReplayBuffer
 
 
 class Agent:
@@ -17,16 +17,18 @@ class Agent:
         obs_shapes,
         use_encoder=True,
         alpha="auto",
-        beta=3e-4,
+        critic_lr=3e-4,
+        actor_lr=3e-4,
         gamma=0.99,
         tau=0.005,
         max_size=1_000_000,
         batch_size=256,
-        reward_scale=1,
+        reward_scale=1.0,
         chkpt_dir="tmp/sac",
         log_dir="runs/sac",
-        gradient_steps=1,  # How many learning steps per environment step
+        gradient_steps=1,
         learning_starts=1000,
+        policy_delay=2,
     ):
         self.env = env
         self.gamma = gamma
@@ -34,221 +36,251 @@ class Agent:
         self.batch_size = batch_size
         self.reward_scale = reward_scale
         self.chkpt_dir = chkpt_dir
+        os.makedirs(self.chkpt_dir, exist_ok=True)
         self.gradient_steps = gradient_steps
+        self.policy_delay = policy_delay
         self.learning_starts = learning_starts
 
         self.device = T.device("cuda" if T.cuda.is_available() else "cpu")
         self.obs_shapes = obs_shapes
         self.use_encoder = use_encoder
 
-        self.writer = SummaryWriter(log_dir=log_dir)
-        self.learn_step = 0
+        self.writer = SummaryWriter(log_dir=log_dir)  # Agent initializes its own writer
+        self.learn_step_counter = 0
 
-        self.is_dict_obs = use_encoder
+        self.is_dict_obs = isinstance(obs_shapes, dict) and use_encoder
         self.n_actions = env.action_space.shape[0]
-        self.max_action = float(env.action_space.high[0])
 
-        # Networks
-        self.actor = ActorNetwork(
-            alpha if isinstance(alpha, float) else 3e-4,
-            obs_shapes,
-            self.max_action,
-            n_actions=self.n_actions,
-            chkpt_dir=chkpt_dir,
-            use_encoder=use_encoder,
-        )
-        self.critic_1 = CriticNetwork(beta,
-                                      obs_shapes,
-                                      self.n_actions,
+        self.max_action = T.as_tensor(env.action_space.high, dtype=T.float32, device=self.device)
+        if self.max_action.ndim == 0:
+            self.max_action = self.max_action.unsqueeze(0)
+        if self.max_action.shape[0] != self.n_actions and self.max_action.shape[0] == 1:
+            self.max_action = self.max_action.repeat(self.n_actions)
+        elif self.max_action.shape[0] != self.n_actions:
+            raise ValueError(f"max_action shape {self.max_action.shape} incompatible with n_actions {self.n_actions}")
+
+        actor_net_max_action_scalar = float(env.action_space.high[0])
+        if np.isscalar(env.action_space.high):
+            actor_net_max_action_scalar = float(env.action_space.high)
+        else:
+            actor_net_max_action_scalar = float(env.action_space.high[0])
+
+        self.hparams = {
+            'agent_type': 'SAC_Custom',
+            'obs_shapes_str': str(obs_shapes),
+            'use_encoder': use_encoder,
+            'is_dict_obs': self.is_dict_obs,
+            'alpha_init': alpha,
+            'critic_lr': critic_lr,
+            'actor_lr': actor_lr,
+            'gamma': gamma,
+            'tau': tau,
+            'replay_buffer_max_size': max_size,
+            'batch_size': batch_size,
+            'reward_scale': reward_scale,
+            'gradient_steps': gradient_steps,
+            'learning_starts': learning_starts,
+            'n_actions': self.n_actions,
+            'actor_net_max_action_scalar': actor_net_max_action_scalar
+        }
+
+        self.actor = ActorNetwork(alpha=actor_lr,
+                                  obs_shapes=obs_shapes,
+                                  max_action=actor_net_max_action_scalar,
+                                  n_actions=self.n_actions,
+                                  chkpt_dir=chkpt_dir,
+                                  use_encoder=use_encoder,
+                                  name="actor")
+        self.critic_1 = CriticNetwork(beta=critic_lr,
+                                      obs_shapes=obs_shapes,
+                                      n_actions=self.n_actions,
                                       chkpt_dir=chkpt_dir,
                                       name="critic_1",
                                       use_encoder=use_encoder)
-        self.critic_2 = CriticNetwork(beta,
-                                      obs_shapes,
-                                      self.n_actions,
+        self.critic_2 = CriticNetwork(beta=critic_lr,
+                                      obs_shapes=obs_shapes,
+                                      n_actions=self.n_actions,
                                       chkpt_dir=chkpt_dir,
                                       name="critic_2",
                                       use_encoder=use_encoder)
-        self.target_critic_1 = CriticNetwork(beta,
-                                             obs_shapes,
-                                             self.n_actions,
+        self.target_critic_1 = CriticNetwork(beta=critic_lr,
+                                             obs_shapes=obs_shapes,
+                                             n_actions=self.n_actions,
                                              chkpt_dir=chkpt_dir,
                                              name="target_critic_1",
                                              use_encoder=use_encoder)
-        self.target_critic_2 = CriticNetwork(beta,
-                                             obs_shapes,
-                                             self.n_actions,
+        self.target_critic_2 = CriticNetwork(beta=critic_lr,
+                                             obs_shapes=obs_shapes,
+                                             n_actions=self.n_actions,
                                              chkpt_dir=chkpt_dir,
                                              name="target_critic_2",
                                              use_encoder=use_encoder)
 
         self.target_critic_1.load_state_dict(self.critic_1.state_dict())
         self.target_critic_2.load_state_dict(self.critic_2.state_dict())
+        for p in self.target_critic_1.parameters():
+            p.requires_grad = False
+        for p in self.target_critic_2.parameters():
+            p.requires_grad = False
 
+        replay_buffer_obs_shapes = obs_shapes if self.is_dict_obs else {"obs": obs_shapes}
         self.memory = ReplayBuffer(
             max_size=max_size,
-            obs_space_dict=obs_shapes if self.is_dict_obs else {"obs": obs_shapes},
+            obs_space_dict=replay_buffer_obs_shapes,
             n_actions=self.n_actions,
         )
 
-        # ✔️ Correct Entropy Tuning Initialization (Matching SB3)
-        if isinstance(alpha, str) and alpha == "auto":
-            self.target_entropy = -np.prod(env.action_space.shape).item()
-            self.log_alpha = T.tensor(np.log(1.0), requires_grad=True, device=self.device)  # 🔥 Correct
-            self.alpha_optimizer = T.optim.Adam([self.log_alpha], lr=beta)
+        if isinstance(alpha, str) and alpha.lower() == "auto":
+            self.target_entropy = -np.prod(env.action_space.shape).astype(np.float32).item()
+            self.log_alpha = T.zeros(1, requires_grad=True, device=self.device)
+            self.alpha_optimizer = T.optim.Adam([self.log_alpha], lr=critic_lr)
             self.entropy_tuning = True
             self.alpha = self.log_alpha.exp().detach()
         else:
             self.entropy_tuning = False
-            self.alpha = T.tensor(float(alpha)).to(self.device)
+            self.alpha = T.tensor(float(alpha), device=self.device)
+
+        self.last_actor_loss, self.last_critic_loss, self.last_ent_coef_loss = np.nan, np.nan, np.nan
 
     def choose_action(self, observation, evaluate=False):
         self.actor.eval()
-
         if self.is_dict_obs:
-            obs = {k: T.tensor(v, dtype=T.float32).unsqueeze(0).to(self.device) for k, v in observation.items()}
+            obs_tensor = {
+                k: T.tensor(np.array(v), dtype=T.float32).unsqueeze(0).to(self.device)
+                for k, v in observation.items()
+            }
         else:
-            obs = T.tensor(observation, dtype=T.float32).unsqueeze(0).to(self.device)
-
-        mu, sigma = self.actor.forward(obs)
-        dist = Normal(mu, sigma)
-
-        if evaluate:
-            action = mu
-        else:
-            action = dist.rsample()
-
-        action = T.tanh(action) * T.tensor(self.max_action).to(self.device)
+            obs_tensor = T.tensor(np.array(observation), dtype=T.float32).unsqueeze(0).to(self.device)
+        with T.no_grad():
+            pre_tanh_mu, sigma = self.actor.forward(obs_tensor)
+            action_gaussian = pre_tanh_mu if evaluate else Normal(pre_tanh_mu, sigma).rsample()
+            action_tanh = T.tanh(action_gaussian)
+        scaled_action = action_tanh * self.max_action
         self.actor.train()
-
-        return action.cpu().detach().numpy()[0]
+        return scaled_action.cpu().detach().numpy()[0]
 
     def remember(self, state, action, reward, new_state, done):
-        if self.is_dict_obs:
-            state_to_store = state
-            new_state_to_store = new_state
-        else:
-            state_to_store = {"obs": state}
-            new_state_to_store = {"obs": new_state}
-
+        state_to_store = state if self.is_dict_obs else {"obs": state}
+        new_state_to_store = new_state if self.is_dict_obs else {"obs": new_state}
         self.memory.store_transition(state_to_store, action, reward, new_state_to_store, done)
 
-    def save_models(self):
-        self.actor.save_checkpoint()
-        self.critic_1.save_checkpoint()
-        self.critic_2.save_checkpoint()
-        self.target_critic_1.save_checkpoint()
-        self.target_critic_2.save_checkpoint()
+    def save_models(self, best_model=False):
+        print(f"... saving {'best ' if best_model else ''}models ...")
+        suffix = "_best" if best_model else ""
+        self.actor.save_checkpoint(suffix=suffix)
+        self.critic_1.save_checkpoint(suffix=suffix)
+        self.critic_2.save_checkpoint(suffix=suffix)
 
-    def load_models(self):
-        self.actor.load_checkpoint()
-        self.critic_1.load_checkpoint()
-        self.critic_2.load_checkpoint()
-        self.target_critic_1.load_checkpoint()
-        self.target_critic_2.load_checkpoint()
+    def load_models(self, best_model=False):
+        print(f"... loading {'best ' if best_model else ''}models ...")
+        suffix = "_best" if best_model else ""
+        self.actor.load_checkpoint(suffix=suffix)
+        self.critic_1.load_checkpoint(suffix=suffix)
+        self.critic_2.load_checkpoint(suffix=suffix)
+        self.target_critic_1.load_state_dict(self.critic_1.state_dict())
+        self.target_critic_2.load_state_dict(self.critic_2.state_dict())
+
+    # Inside custom_sac/agent.py
 
     def learn(self):
         if self.memory.size() < max(self.learning_starts, self.batch_size):
-            return
+            return False
 
-        for _ in range(self.gradient_steps):
-            states, actions, rewards, states_, dones = self.memory.sample_buffer(self.batch_size)
+        for i in range(self.gradient_steps):  # This loop runs `gradient_steps` times per call to learn()
+            states_data, actions_data, rewards_data, next_states_data, dones_data = \
+                self.memory.sample_buffer(self.batch_size)
 
+            # Convert data to tensors (as before)
             if self.is_dict_obs:
-                state = {k: T.tensor(states[k], dtype=T.float32).to(self.device) for k in states.keys()}
-                state_ = {k: T.tensor(states_[k], dtype=T.float32).to(self.device) for k in states_.keys()}
+                states = {k: T.tensor(states_data[k], dtype=T.float32).to(self.device) for k in states_data.keys()}
+                next_states = {
+                    k: T.tensor(next_states_data[k], dtype=T.float32).to(self.device)
+                    for k in next_states_data.keys()
+                }
             else:
-                state = T.tensor(states["obs"], dtype=T.float32).to(self.device)
-                state_ = T.tensor(states_["obs"], dtype=T.float32).to(self.device)
-
-            actions = T.tensor(actions, dtype=T.float32).to(self.device)
-            rewards = T.tensor(rewards, dtype=T.float32).to(self.device)
-            dones = T.tensor(dones, dtype=T.float32).to(self.device)
+                states = T.tensor(states_data["obs"], dtype=T.float32).to(self.device)
+                next_states = T.tensor(next_states_data["obs"], dtype=T.float32).to(self.device)
+            actions = T.tensor(actions_data, dtype=T.float32).to(self.device)
+            rewards = T.tensor(rewards_data, dtype=T.float32).to(self.device).unsqueeze(1)
+            dones = T.tensor(dones_data, dtype=T.float32).to(self.device).unsqueeze(1)
 
             # ──────────────────────────────────────────
-            # Critic Target Calculation
+            # Critic Target Calculation (y_t) - Happens every gradient step
             # ──────────────────────────────────────────
             with T.no_grad():
-                mu_, sigma_ = self.actor(state_)
-                dist = Normal(mu_, sigma_)
-                next_actions, log_probs = self._sample_action_and_log_prob(dist)
-
-                target_q1 = self.target_critic_1(state_, next_actions).view(-1)
-                target_q2 = self.target_critic_2(state_, next_actions).view(-1)
-                target_q = T.min(target_q1, target_q2)
-
-                q_target = self.reward_scale * rewards + self.gamma * (1 - dones) * (target_q -
-                                                                                     self.alpha * log_probs.view(-1))
+                next_policy_actions_scaled, next_log_probs = self.actor.sample_normal(next_states, reparameterize=False)
+                target_q1_values = self.target_critic_1.forward(next_states, next_policy_actions_scaled)
+                target_q2_values = self.target_critic_2.forward(next_states, next_policy_actions_scaled)
+                target_q_values = T.min(target_q1_values, target_q2_values)
+                q_target = self.reward_scale * rewards + \
+                           self.gamma * (1.0 - dones) * (target_q_values - self.alpha * next_log_probs)
 
             # ──────────────────────────────────────────
-            # Critic Update
+            # Critic Update (Optimize Q_θ_i) - Happens every gradient step
             # ──────────────────────────────────────────
-            q1 = self.critic_1(state, actions).view(-1)
-            q2 = self.critic_2(state, actions).view(-1)
-
-            critic_1_loss = F.mse_loss(q1, q_target)
-            critic_2_loss = F.mse_loss(q2, q_target)
+            q1_current_values = self.critic_1.forward(states, actions)
+            q2_current_values = self.critic_2.forward(states, actions)
+            critic_1_loss = F.mse_loss(q1_current_values, q_target)
+            critic_2_loss = F.mse_loss(q2_current_values, q_target)
+            critic_total_loss = critic_1_loss + critic_2_loss
 
             self.critic_1.optimizer.zero_grad()
             self.critic_2.optimizer.zero_grad()
-            (critic_1_loss + critic_2_loss).backward()
+            critic_total_loss.backward()
             self.critic_1.optimizer.step()
             self.critic_2.optimizer.step()
+            self.last_critic_loss = critic_total_loss.item() / 2.0
+
+            # Increment learn_step_counter after each critic gradient step
+            self.learn_step_counter += 1
 
             # ──────────────────────────────────────────
-            # Actor Update
+            # Delayed Actor, Alpha, and Target Network Updates
             # ──────────────────────────────────────────
-            mu, sigma = self.actor(state)
-            dist = Normal(mu, sigma)
-            sampled_actions, log_probs = self._sample_action_and_log_prob(dist)
+            if self.learn_step_counter % self.policy_delay == 0:
+                # Freeze critic parameters during actor update
+                for p in self.critic_1.parameters():
+                    p.requires_grad = False
+                for p in self.critic_2.parameters():
+                    p.requires_grad = False
 
-            q1_new = self.critic_1(state, sampled_actions)
-            q2_new = self.critic_2(state, sampled_actions)
-            q_new = T.min(q1_new, q2_new).view(-1)
+                # --- Actor Update (Optimize π_φ) ---
+                policy_actions_scaled, log_probs = self.actor.sample_normal(states, reparameterize=True)
+                q1_new_policy = self.critic_1.forward(states, policy_actions_scaled)
+                q2_new_policy = self.critic_2.forward(states, policy_actions_scaled)
+                q_new_policy = T.min(q1_new_policy, q2_new_policy)
+                actor_loss = (self.alpha * log_probs - q_new_policy).mean()
 
-            actor_loss = (self.alpha * log_probs.view(-1) - q_new).mean()
+                self.actor.optimizer.zero_grad()
+                actor_loss.backward()
+                self.actor.optimizer.step()
+                self.last_actor_loss = actor_loss.item()
 
-            self.actor.optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor.optimizer.step()
+                # Unfreeze critic parameters
+                for p in self.critic_1.parameters():
+                    p.requires_grad = True
+                for p in self.critic_2.parameters():
+                    p.requires_grad = True
 
-            # ──────────────────────────────────────────
-            # Entropy (Alpha) Update
-            # ──────────────────────────────────────────
-            if self.entropy_tuning:
-                entropy_loss = -(self.log_alpha * (log_probs + self.target_entropy).detach()).mean()
+                # --- Entropy (Alpha) Update (Optimize α) ---
+                if self.entropy_tuning:
+                    alpha_loss = -(self.log_alpha * (log_probs + self.target_entropy).detach()).mean()
+                    self.alpha_optimizer.zero_grad()
+                    alpha_loss.backward()
+                    self.alpha_optimizer.step()
+                    self.alpha = self.log_alpha.exp().detach()
+                    self.last_ent_coef_loss = alpha_loss.item()
+                else:
+                    self.last_ent_coef_loss = np.nan
 
-                self.alpha_optimizer.zero_grad()
-                entropy_loss.backward()
-                self.alpha_optimizer.step()
+                # --- Target Network Update (Polyak Averaging) ---
+                self.update_network_parameters()
 
-                self.alpha = self.log_alpha.exp().detach()
-            else:
-                entropy_loss = T.tensor(0.0)
-
-            # ✔️ Track losses for logging in Trainer
-            self.last_actor_loss = actor_loss.item()
-            self.last_critic_loss = (critic_1_loss.item() + critic_2_loss.item()) / 2
-            self.last_ent_coef_loss = entropy_loss.item() if self.entropy_tuning else np.nan
-
-            self.learn_step += 1
-
-            self.update_network_parameters()
+        return True
 
     def update_network_parameters(self, tau=None):
-        if tau is None:
-            tau = self.tau
-
-        for target_param, param in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
-            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
-
-        for target_param, param in zip(self.target_critic_2.parameters(), self.critic_2.parameters()):
-            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
-
-    def _sample_action_and_log_prob(self, dist):
-        action = dist.rsample()
-        log_prob = dist.log_prob(action)
-        log_prob -= T.log(1 - T.tanh(action).pow(2) + 1e-6)
-        log_prob = log_prob.sum(1, keepdim=True)
-        action = T.tanh(action) * T.tensor(self.max_action).to(self.device)
-        return action, log_prob
+        if tau is None: tau = self.tau
+        for tp, p in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
+            tp.data.copy_(tau * p.data + (1.0 - tau) * tp.data)
+        for tp, p in zip(self.target_critic_2.parameters(), self.critic_2.parameters()):
+            tp.data.copy_(tau * p.data + (1.0 - tau) * tp.data)

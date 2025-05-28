@@ -20,3 +20,4 @@ stagnation_classifier/models
 models
 runs    
 Data
+config.yaml
