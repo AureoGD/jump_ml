@@ -28,7 +28,9 @@ class Agent:
         log_dir="runs/sac",
         gradient_steps=1,
         learning_starts=1000,
-        policy_delay=2,
+        policy_delay=2,  # How often to update policy and target networks
+        max_grad_norm=None,
+        # Max norm for gradient clipping (e.g., 1.0). None to disable.
     ):
         self.env = env
         self.gamma = gamma
@@ -38,14 +40,15 @@ class Agent:
         self.chkpt_dir = chkpt_dir
         os.makedirs(self.chkpt_dir, exist_ok=True)
         self.gradient_steps = gradient_steps
-        self.policy_delay = policy_delay
         self.learning_starts = learning_starts
+        self.policy_delay = policy_delay
+        self.max_grad_norm = max_grad_norm  # Store max_grad_norm
 
         self.device = T.device("cuda" if T.cuda.is_available() else "cpu")
         self.obs_shapes = obs_shapes
         self.use_encoder = use_encoder
 
-        self.writer = SummaryWriter(log_dir=log_dir)  # Agent initializes its own writer
+        self.writer = SummaryWriter(log_dir=log_dir)
         self.learn_step_counter = 0
 
         self.is_dict_obs = isinstance(obs_shapes, dict) and use_encoder
@@ -80,6 +83,8 @@ class Agent:
             'reward_scale': reward_scale,
             'gradient_steps': gradient_steps,
             'learning_starts': learning_starts,
+            'policy_delay': policy_delay,
+            'max_grad_norm': max_grad_norm,  # Added to hparams
             'n_actions': self.n_actions,
             'actor_net_max_action_scalar': actor_net_max_action_scalar
         }
@@ -180,17 +185,12 @@ class Agent:
         self.target_critic_1.load_state_dict(self.critic_1.state_dict())
         self.target_critic_2.load_state_dict(self.critic_2.state_dict())
 
-    # Inside custom_sac/agent.py
-
     def learn(self):
-        if self.memory.size() < max(self.learning_starts, self.batch_size):
-            return False
+        if self.memory.size() < max(self.learning_starts, self.batch_size): return False
 
-        for i in range(self.gradient_steps):  # This loop runs `gradient_steps` times per call to learn()
+        for i in range(self.gradient_steps):
             states_data, actions_data, rewards_data, next_states_data, dones_data = \
                 self.memory.sample_buffer(self.batch_size)
-
-            # Convert data to tensors (as before)
             if self.is_dict_obs:
                 states = {k: T.tensor(states_data[k], dtype=T.float32).to(self.device) for k in states_data.keys()}
                 next_states = {
@@ -204,78 +204,72 @@ class Agent:
             rewards = T.tensor(rewards_data, dtype=T.float32).to(self.device).unsqueeze(1)
             dones = T.tensor(dones_data, dtype=T.float32).to(self.device).unsqueeze(1)
 
-            # ──────────────────────────────────────────
-            # Critic Target Calculation (y_t) - Happens every gradient step
-            # ──────────────────────────────────────────
             with T.no_grad():
                 next_policy_actions_scaled, next_log_probs = self.actor.sample_normal(next_states, reparameterize=False)
-                target_q1_values = self.target_critic_1.forward(next_states, next_policy_actions_scaled)
-                target_q2_values = self.target_critic_2.forward(next_states, next_policy_actions_scaled)
-                target_q_values = T.min(target_q1_values, target_q2_values)
-                q_target = self.reward_scale * rewards + \
-                           self.gamma * (1.0 - dones) * (target_q_values - self.alpha * next_log_probs)
+                target_q1 = self.target_critic_1.forward(next_states, next_policy_actions_scaled)
+                target_q2 = self.target_critic_2.forward(next_states, next_policy_actions_scaled)
+                target_q_min = T.min(target_q1, target_q2)
+                q_target = self.reward_scale * rewards + self.gamma * (1.0 - dones) * (target_q_min -
+                                                                                       self.alpha * next_log_probs)
 
-            # ──────────────────────────────────────────
-            # Critic Update (Optimize Q_θ_i) - Happens every gradient step
-            # ──────────────────────────────────────────
-            q1_current_values = self.critic_1.forward(states, actions)
-            q2_current_values = self.critic_2.forward(states, actions)
-            critic_1_loss = F.mse_loss(q1_current_values, q_target)
-            critic_2_loss = F.mse_loss(q2_current_values, q_target)
-            critic_total_loss = critic_1_loss + critic_2_loss
+            q1_current = self.critic_1.forward(states, actions)
+            q2_current = self.critic_2.forward(states, actions)
+            critic_1_loss = F.mse_loss(q1_current, q_target)
+            critic_2_loss = F.mse_loss(q2_current, q_target)
+            critic_loss_total = critic_1_loss + critic_2_loss
 
             self.critic_1.optimizer.zero_grad()
             self.critic_2.optimizer.zero_grad()
-            critic_total_loss.backward()
+            critic_loss_total.backward()
+            # *** GRADIENT CLIPPING FOR CRITICS ***
+            if self.max_grad_norm is not None:
+                T.nn.utils.clip_grad_norm_(self.critic_1.parameters(), self.max_grad_norm)
+                T.nn.utils.clip_grad_norm_(self.critic_2.parameters(), self.max_grad_norm)
             self.critic_1.optimizer.step()
             self.critic_2.optimizer.step()
-            self.last_critic_loss = critic_total_loss.item() / 2.0
+            self.last_critic_loss = critic_loss_total.item() / 2.0
 
-            # Increment learn_step_counter after each critic gradient step
             self.learn_step_counter += 1
 
-            # ──────────────────────────────────────────
-            # Delayed Actor, Alpha, and Target Network Updates
-            # ──────────────────────────────────────────
             if self.learn_step_counter % self.policy_delay == 0:
-                # Freeze critic parameters during actor update
                 for p in self.critic_1.parameters():
                     p.requires_grad = False
                 for p in self.critic_2.parameters():
                     p.requires_grad = False
 
-                # --- Actor Update (Optimize π_φ) ---
                 policy_actions_scaled, log_probs = self.actor.sample_normal(states, reparameterize=True)
-                q1_new_policy = self.critic_1.forward(states, policy_actions_scaled)
-                q2_new_policy = self.critic_2.forward(states, policy_actions_scaled)
-                q_new_policy = T.min(q1_new_policy, q2_new_policy)
-                actor_loss = (self.alpha * log_probs - q_new_policy).mean()
+                q1_policy = self.critic_1.forward(states, policy_actions_scaled)
+                q2_policy = self.critic_2.forward(states, policy_actions_scaled)
+                q_policy_min = T.min(q1_policy, q2_policy)
+                actor_loss = (self.alpha * log_probs - q_policy_min).mean()
 
                 self.actor.optimizer.zero_grad()
                 actor_loss.backward()
+                # *** GRADIENT CLIPPING FOR ACTOR ***
+                if self.max_grad_norm is not None:
+                    T.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
                 self.actor.optimizer.step()
                 self.last_actor_loss = actor_loss.item()
 
-                # Unfreeze critic parameters
                 for p in self.critic_1.parameters():
                     p.requires_grad = True
                 for p in self.critic_2.parameters():
                     p.requires_grad = True
 
-                # --- Entropy (Alpha) Update (Optimize α) ---
                 if self.entropy_tuning:
                     alpha_loss = -(self.log_alpha * (log_probs + self.target_entropy).detach()).mean()
                     self.alpha_optimizer.zero_grad()
                     alpha_loss.backward()
+                    # Optionally clip alpha gradient, though less common:
+                    # if self.max_grad_norm is not None:
+                    #     T.nn.utils.clip_grad_norm_([self.log_alpha], self.max_grad_norm)
                     self.alpha_optimizer.step()
                     self.alpha = self.log_alpha.exp().detach()
                     self.last_ent_coef_loss = alpha_loss.item()
                 else:
                     self.last_ent_coef_loss = np.nan
 
-                # --- Target Network Update (Polyak Averaging) ---
                 self.update_network_parameters()
-
         return True
 
     def update_network_parameters(self, tau=None):

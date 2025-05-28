@@ -94,6 +94,7 @@ class Trainer:
         learning_starts=100,  # Matched SB3's typical default for SAC
         gradient_steps=1,
         reward_scale=1.0,
+        max_grad_norm=None,
         agent_kwargs=None,
     ):
         self.env = env
@@ -113,6 +114,7 @@ class Trainer:
         self.eval_frequency_timesteps = eval_frequency_timesteps
         self.n_eval_episodes = n_eval_episodes
         self.save_freq_episodes = save_freq_episodes
+        _max_grad_norm = max_grad_norm
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"sac_{self.env_name.replace('/', '-')}_{timestamp}"
@@ -133,6 +135,7 @@ class Trainer:
             'n_eval_episodes': n_eval_episodes,
             'save_freq_episodes': save_freq_episodes,
             'env_id': self.env_name,
+            'max_grad_norm': _max_grad_norm,
         }
         # Hyperparameters to be passed to the Agent constructor
         self.agent_constructor_hparams = {

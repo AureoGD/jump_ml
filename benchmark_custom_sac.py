@@ -62,6 +62,12 @@ def main():
 
     # Initialize the Trainer with parameters from the config file
     print("Initializing Trainer...")
+    max_grad_norm_from_config = config.get('max_grad_norm')
+    if isinstance(max_grad_norm_from_config, (int, float)):
+        max_grad_norm_for_trainer = float(max_grad_norm_from_config)
+    else:
+        max_grad_norm_for_trainer = None  # Default to None if not a valid number or missing
+
     trainer = Trainer(
         env=env,
         eval_env=eval_env,
@@ -86,7 +92,9 @@ def main():
         batch_size=config.get('batch_size', 256),
         learning_starts=config.get('learning_starts', 1000),
         gradient_steps=config.get('gradient_steps', 1),
-        reward_scale=config.get('reward_scale', 1.0))
+        reward_scale=config.get('reward_scale', 1.0),
+        max_grad_norm=max_grad_norm_for_trainer,
+    )
 
     print("Starting training...")
     try:
