@@ -235,7 +235,7 @@ void OptProblem0::UpdateDynamicModel()
     // // GRF constraints
     // this->C_cons.block(3, 0, 3, 3) = -Kd * T0;
 
-        this->C_cons.block(4, 0, 3, 3) = -Kd * T0;
+    this->C_cons.block(4, 0, 3, 3) = -Kd * T0;
     this->C_cons.block(7, 0, 3, 3) = -Kd * T0;
     this->C_st.block(9, 0, 3, 3) = T0;
 }
