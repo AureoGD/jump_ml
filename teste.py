@@ -9,6 +9,7 @@ from env_ga.multi_env import MultiGAEnv
 from env_ga.jump_states import _robot_states
 from step_evaluator.step_evaluator import StepEvaluator
 from switch_rules.switch_rule_base import SwitchRuleBase
+from utils.state_normalizer import StateNormalizer
 
 
 class DummySwitchRule(SwitchRuleBase, torch.nn.Module):
@@ -105,6 +106,8 @@ if __name__ == "__main__":
         'observation_keys': observation_keys
         # Add other StepEvaluator-specific args from step_eval_base_cfg if needed
     }
+
+    state_normalizer = StateNormalizer(observation_keys=observation_keys, config=config.get('normalization_config'))
 
     # --- 3. Instantiate MultiGAEnv ---
     print(f"Instantiating MultiGAEnv with n_individuals={n_individuals}...")

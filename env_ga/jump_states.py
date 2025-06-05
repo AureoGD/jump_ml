@@ -41,6 +41,9 @@ def _robot_states() -> dict:
         "knee_pos": np.zeros((2, 1), dtype=np.float64),
         "knee_vel": np.zeros((2, 1), dtype=np.float64),
 
+        # foot state
+        "foot_st": np.zeros((1, 1), dtype=np.float32),
+
         # Controller/System states
         "cont_mode": np.zeros((1, 1), dtype=np.float32),
         "cont_j": np.zeros((1, 1), dtype=np.float32),

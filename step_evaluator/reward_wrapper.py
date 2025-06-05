@@ -71,12 +71,12 @@ class RewardFcns:
 
         self.rewards.fill(0)  # Use .fill(0) which is slightly more efficient
 
-        # self.rewards[0] = self.body_height_weight * self._body_position()
-        # self.rewards[1] = self.body_orientation_weight * self._body_orientation_penalty()
-        # self.rewards[2] = self.po_violation_weight * self._check_rgc_violation()
-        # self.rewards[3] = self.stagnation_penalty_weight * self._stagnation_penalty()
-        # self.rewards[4] = self.stand_reward_weight * self._stand_stability_reward()
-        # self.rewards[5] = self.crouch_weight * self._crouch_reward()
+        self.rewards[0] = self.body_height_weight * self._body_position()
+        self.rewards[1] = self.body_orientation_weight * self._body_orientation_penalty()
+        self.rewards[2] = self.po_violation_weight * self._check_rgc_violation()
+        self.rewards[3] = self.stagnation_penalty_weight * self._stagnation_penalty()
+        self.rewards[4] = self.stand_reward_weight * self._stand_stability_reward()
+        self.rewards[5] = self.crouch_weight * self._crouch_reward()
 
         total_reward = self.rewards.sum()  #+ self._curriculum_learning_check()
 
@@ -98,7 +98,7 @@ class RewardFcns:
     def _check_rgc_violation(self) -> float:
         """Penalizes if the RGC controller fails to solve the optimization problem."""
         # 'rcg_status' should be a key in your state dictionary
-        rcg_status = self.robot_states.get('rcg_status', [[1]])  # Default to 1 (success) if not present
+        rcg_status = self.robot_states.get('rcg_status')
         if rcg_status == 0:
             return -1.0
         elif rcg_status == -1:

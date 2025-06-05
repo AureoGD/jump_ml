@@ -139,6 +139,7 @@ class RobotModelGA:
 
         self.robot_states['heel_cont'][0, 0] = aux_F_cont[1, 0]
         self.robot_states['toe_cont'][0, 0] = aux_F_cont[0, 0]
+        self.robot_states['foot_st'][0, 0] = (aux_F_cont[0, 0] + aux_F_cont[0, 0] * 2) / 2
 
         # Update the underlying matrix model with new joint states
         self.mdl.update_robot_states(q=self.robot_states['q'], dq=self.robot_states['dq'])

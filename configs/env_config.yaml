@@ -2,14 +2,12 @@
 
 # --- General Environment Settings ---
 environment:
-  n_individuals: 2       # Number of individuals in the population for MultiGAEnv
-  render_simulation: true  # Whether to render the PyBullet simulation
-  max_steps_per_episode: 1500 # Max steps for run_generation
+  n_individuals: 50       # For MultiGAEnv, but CEM population_size will override for actual training
+  render_simulation: false
+  max_steps_per_episode: 1000
 
-# --- Observation Space Configuration (used by StepEvaluator and SwitchRule) ---
+# --- Observation Space Configuration ---
 observation_setup:
-  # List of state keys from jump_states.create_initial_robot_states()
-  # to be included in the observation vector fed to the SwitchRule NN.
   keys:
     - 'r_pos'
     - 'r_vel'
@@ -17,13 +15,49 @@ observation_setup:
     - 'dth'
     - 'q'
     - 'dq'
-    - 'qr'        
-    - 'toe_cont'
-    - 'heel_cont'
-    - 'cont_mode' 
-
-  # observation_shape_depth:
+    - 'qr'
+    - 'tau'        # Make sure this is in your create_initial_robot_states() if used
+    - 'cont_mode'
+    - 'foot_st'
+    # Add other keys like 'toe_cont', 'heel_cont' if you decide to use them
   shape_depth: 0
 
+# --- SwitchRule NN Configuration ---
 switch_rule_config:
-  num_modes: 3 # Example: PO_0, PO_1, PO_2
+  num_modes: 3
+  # You could add NN architecture details here too, e.g.:
+  # nn_architecture:
+  #   hidden_layers: [128, 128]
+  #   activation_function: "relu"
+
+# --- State Normalization Configuration ---
+normalization_config:
+  r_pos: { type: 'online' }
+  r_vel: { type: 'online' }
+  th:    { type: 'static', min: -3.14159, max: 3.14159, target_min: -1, target_max: 1 }
+  dth:   { type: 'online' }
+  q:     { type: 'static', min: [-0.5, -2.2, -1.1], max: [1.2, 0.5, 1.1], target_min: -1, target_max: 1 }
+  dq:    { type: 'online' }
+  qr:    { type: 'static', min: [-0.6, -2.5, -1.3], max: [1.4, 0.6, 1.3], target_min: -1, target_max: 1 }
+  tau:   { type: 'static', min: [-50.0, -50.0, -50.0], max: [50.0, 50.0, 50.0], target_min: -1, target_max: 1 }
+  cont_mode: {type: 'static', min: 0, max: 2, target_min: -1, target_max: 1 } # Or keep raw if it's just an index
+  foot_st: { type: 'static', min: 0, max: 1, target_min: -1, target_max: 1 }
+
+# --- Logger Configuration ---
+logger_config:
+  log_dir: "logs/cem_runs"
+  experiment_name: "jumping_robot_cem_v1"
+  log_to_csv: true
+  log_to_tensorboard: true
+  save_best_model: true
+
+# --- Training Algorithm Configuration ---
+training_config:
+  cem:
+    num_generations: 1000      # Total number of CEM generations to run
+    population_size: 50       # Number of individuals (NN weight vectors) per generation
+    elite_fraction: 0.1       # Top 10% of the population selected as elites
+    initial_std_dev: 0.5      # Initial standard deviation for sampling NN weights
+    extra_noise_scale: 0.01   # Initial scale of extra noise added to std_devs (prevents premature convergence)
+    noise_decay_factor: 0.995 # Factor to decay extra_noise_scale each generation (e.g., 0.99 to 0.999)
+    min_std_dev: 0.001        # Minimum standard deviation for parameters to maintain exploration
