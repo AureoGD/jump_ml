@@ -8,10 +8,9 @@ import os
 
 
 class PhysicsWorld:
+
     def __init__(self, num_robots, render=False):
-        self.model_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "../../jump_model/hopper.urdf"
-        )
+        self.model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../jump_model/hopper.urdf")
         self._time_step = 0.001
         self.render = render
         self.robot_ids = []

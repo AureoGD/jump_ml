@@ -1,0 +1,29 @@
+# env_config.yaml
+
+# --- General Environment Settings ---
+environment:
+  n_individuals: 2       # Number of individuals in the population for MultiGAEnv
+  render_simulation: true  # Whether to render the PyBullet simulation
+  max_steps_per_episode: 1500 # Max steps for run_generation
+
+# --- Observation Space Configuration (used by StepEvaluator and SwitchRule) ---
+observation_setup:
+  # List of state keys from jump_states.create_initial_robot_states()
+  # to be included in the observation vector fed to the SwitchRule NN.
+  keys:
+    - 'r_pos'
+    - 'r_vel'
+    - 'th'
+    - 'dth'
+    - 'q'
+    - 'dq'
+    - 'qr'        
+    - 'toe_cont'
+    - 'heel_cont'
+    - 'cont_mode' 
+
+  # observation_shape_depth:
+  shape_depth: 0
+
+switch_rule_config:
+  num_modes: 3 # Example: PO_0, PO_1, PO_2

@@ -45,7 +45,7 @@
 				<cylinder length="0.40000" radius="0.05000"/>
 			</geometry>
         	<material name="red">
-          		<color rgba="1 0.1 0.2 0.2"/>
+          		<color rgba="1 0.1 0.2 0.5"/>
         	</material>
 		</visual>
 		<collision>
@@ -76,7 +76,7 @@
 				<cylinder length="0.45000" radius="0.05000"/>
 			</geometry>
         	<material name="blue">
-          		<color rgba="0 1.0 1.0 0.2"/>
+          		<color rgba="0 1.0 1.0 0.5"/>
         	</material>
 		</visual>
 		<collision>
@@ -108,7 +108,7 @@
 				<cylinder length="0.50000" radius="0.05000"/>
 			</geometry>
         	<material name="yellow">
-          		<color rgba="0.5 1.0 0.0 0.2"/>
+          		<color rgba="0.5 1.0 0.0 0.5"/>
         	</material>
 		</visual>
 
@@ -141,7 +141,7 @@
 				<cylinder length="0.39000" radius="0.05000"/>
 			</geometry>
         	<material name="cyan">
-          		<color rgba="0 1.0 1.0 0.2"/>
+          		<color rgba="0 1.0 1.0 0.5"/>
         	</material>
 		</visual>
 
@@ -165,7 +165,7 @@
 				<sphere radius="0.01"/>
 			</geometry>
         	<material name="Cyan">
-          		<color rgba="1 0 0 0.2"/>
+          		<color rgba="1 0 0 0.5"/>
         	</material>
 		</visual>
 		<collision>
@@ -188,7 +188,7 @@
 				<sphere radius="0.01"/>
 			</geometry>
         	<material name="Cyan">
-          		<color rgba="1 0 0 0.2"/>
+          		<color rgba="1 0 0 0.6"/>
         	</material>
 		</visual>
 		<collision>
