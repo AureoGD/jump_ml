@@ -1,0 +1,38 @@
+# config/test_config.yaml
+# Configuration for a simple integration test of the Individual class.
+
+# --- Environment & Simulation Settings ---
+environment:
+  max_steps_per_episode: 1000  # Run for a short duration for the test
+
+# --- Physics World Configuration ---
+physics_config:
+  render: true              # We want to see the simulation
+  sim_dt: 0.001
+  robot_urdf_path: "jump_model/hopper.urdf" # Relative path from project root
+  # ground_urdf_path: "path/to/your/custom_ground.urdf" # Optional
+
+# --- Hopper Model Configuration ---
+model_config:
+  rgc_dt: 0.01
+  pd_gains:
+    kp: 150
+    kd: 10
+  max_torque: 50
+
+# --- Step Evaluator Configuration ---
+step_eval_config:
+  # The keys that will form the observation vector for the policy
+  observation_keys:
+    - 'r_pos'
+    - 'r_vel'
+    - 'th'
+    - 'dth'
+    - 'q'
+    - 'dq'
+    - 'qr'
+    - 'cont_mode'
+
+# --- Switch Rule Configuration ---
+switch_rule_config:
+  num_modes: 3 # PO_0, PO_1, PO_2

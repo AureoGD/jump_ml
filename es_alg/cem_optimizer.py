@@ -42,9 +42,6 @@ def unflatten_parameters_to_state_dict(flat_params: np.ndarray,
 
 
 class CEMOptimizer:
-    """
-    Cross-Entropy Method (CEM) for evolving Neural Network parameters.
-    """
 
     def __init__(
             self,
@@ -52,110 +49,129 @@ class CEMOptimizer:
             population_size: int = 50,
             elite_fraction: float = 0.1,
             initial_std_dev: float = 0.1,
-            noise_decay_factor: float = 0.995,  # For decaying added noise
-            min_std_dev: float = 1e-3,  # Minimum std dev for exploration
-            extra_noise_scale: float = 0.01):  # Initial scale of extra noise
-        """
-        Initializes the CEM optimizer.
-
-        Args:
-            param_dim (int): Dimensionality of the parameter vector (e.g., flattened NN weights).
-            population_size (int): Number of candidate solutions (individuals) per generation.
-            elite_fraction (float): Fraction of the population to select as elites (e.g., 0.1 for top 10%).
-            initial_std_dev (float): Initial standard deviation for the Gaussian distribution of parameters.
-            noise_decay_factor (float): Factor by which extra_noise_scale decays each generation.
-            min_std_dev (float): Minimum value for standard deviations to maintain exploration.
-            extra_noise_scale (float): Initial scale of the extra noise added to std_devs to prevent
-                                       premature convergence, similar to epsilon in CEM-RL paper.
-        """
+            update_rule_type: str = "standard",  # "standard" or "paper_eq3"
+            elite_weighting_type: str = "uniform",  # "uniform" or "logarithmic"
+            noise_decay_factor: float = 0.995,
+            min_std_dev: float = 1e-3,
+            extra_noise_scale: float = 0.01):
         if not (0 < elite_fraction <= 1):
             raise ValueError("Elite fraction must be between 0 (exclusive) and 1 (inclusive).")
+        if update_rule_type not in ["standard", "paper_eq3"]:
+            raise ValueError("update_rule_type must be 'standard' or 'paper_eq3'.")
+        if elite_weighting_type not in ["uniform", "logarithmic"]:
+            raise ValueError("elite_weighting_type must be 'uniform' or 'logarithmic'.")
 
         self.param_dim = param_dim
         self.population_size = population_size
-        self.num_elites = max(1, int(population_size * elite_fraction))  # Ensure at least one elite
+        self.num_elites = max(1, int(population_size * elite_fraction))
 
-        # Distribution parameters (mean and standard deviations for each parameter)
         self.mean_params = np.zeros(param_dim, dtype=np.float32)
-        self.std_devs = np.full(param_dim, initial_std_dev, dtype=np.float32)
+        self.std_devs = np.full(param_dim, initial_std_dev, dtype=np.float32)  # Stores std_devs
+
+        self.update_rule_type = update_rule_type
+        self.elite_weighting_type = elite_weighting_type
 
         self.noise_decay_factor = noise_decay_factor
         self.min_std_dev = min_std_dev
         self.current_extra_noise_scale = extra_noise_scale
 
+        # For "paper_eq3" rule, we need the mean used for sampling the current generation
+        self._mu_old_for_current_generation = np.copy(self.mean_params)
+
         print(
             f"CEMOptimizer initialized: param_dim={param_dim}, pop_size={population_size}, num_elites={self.num_elites}"
         )
+        print(f"Update rule: {self.update_rule_type}, Elite weighting: {self.elite_weighting_type}")
         print(f"Initial mean_params: (zeros), Initial std_devs: {initial_std_dev}")
 
     def set_initial_mean_params(self, initial_model: torch.nn.Module):
-        """
-        Sets the initial mean parameters from an existing model.
-        Call this after __init__ if you have a pre-trained or reference model.
-        """
         self.mean_params = flatten_nn_parameters(initial_model)
+        self._mu_old_for_current_generation = np.copy(self.mean_params)  # Update mu_old as well
         print(f"CEMOptimizer: Initial mean_params set from provided model. Shape: {self.mean_params.shape}")
 
     def sample_population(self) -> List[np.ndarray]:
-        """
-        Samples a new population of parameter vectors from the current distribution.
-        Returns a list of flat NumPy arrays, each representing a parameter vector.
-        """
+        # Store the mean used for this generation's sampling if using paper_eq3 rule
+        if self.update_rule_type == "paper_eq3":
+            self._mu_old_for_current_generation = np.copy(self.mean_params)
+
         population = []
         for _ in range(self.population_size):
-            # Sample from N(mean_params, diag(std_devs^2))
-            # This is equivalent to adding noise scaled by std_devs to the mean
             individual_params = self.mean_params + self.std_devs * np.random.randn(self.param_dim).astype(np.float32)
             population.append(individual_params)
         return population
 
-    def update_distribution(self, evaluated_population: List[Tuple[np.ndarray, float]]):
-        """
-        Updates the mean and standard deviations of the parameter distribution
-        based on the fitness of the evaluated population.
+    def _calculate_elite_weights(self) -> np.ndarray:
+        """Calculates weights for elite individuals based on the configured type."""
+        if self.elite_weighting_type == "uniform":
+            return np.full(self.num_elites, 1.0 / self.num_elites, dtype=np.float32)
 
-        Args:
-            evaluated_population (List[Tuple[np.ndarray, float]]): 
-                A list of tuples, where each tuple is (parameter_vector, fitness_score).
-        """
+        elif self.elite_weighting_type == "logarithmic":
+            # Ranks i = 1, 2, ..., K_e
+            ranks = np.arange(1, self.num_elites + 1)
+            # log(1 + K_e) / i term from paper (Hansen, 2016)
+            # The paper has log(1+K_e)/i, but often log(K_e/2 + 1) - log(i) is used
+            # Let's use the paper's direct citation: log( (K_e + 1) / i ) could be problematic if K_e+1 < i
+            # A common implementation is: weights_i = log(K_e + 1) - log(i)
+            # Or, using the paper's more explicit formula: log(1+K_e)/i part
+            raw_weights = np.log(self.num_elites + 1) - np.log(ranks)  # This makes best rank have highest weight
+            # Normalize so weights sum to 1
+            if np.sum(raw_weights) <= 0:  # Avoid division by zero or negative weights if K_e is small
+                return np.full(self.num_elites, 1.0 / self.num_elites, dtype=np.float32)  # Fallback
+
+            weights = raw_weights / np.sum(raw_weights)
+            return weights.astype(np.float32)
+        else:  # Should not happen due to __init__ check
+            return np.full(self.num_elites, 1.0 / self.num_elites, dtype=np.float32)
+
+    def update_distribution(self, evaluated_population: List[Tuple[np.ndarray, float]]):
         if len(evaluated_population) != self.population_size:
             raise ValueError("Size of evaluated_population must match population_size.")
 
-        # Sort individuals by fitness in descending order (higher fitness is better)
         evaluated_population.sort(key=lambda x: x[1], reverse=True)
+        elite_individuals_params = [ind[0] for ind in evaluated_population[:self.num_elites]]
 
-        # Select the elites
-        elite_individuals = [ind[0] for ind in evaluated_population[:self.num_elites]]
-
-        if not elite_individuals:
-            print("Warning: No elite individuals selected. This should not happen if num_elites >= 1.")
+        if not elite_individuals_params:
+            print("Warning: No elite individuals selected.")
             return
 
-        elite_params_array = np.array(elite_individuals, dtype=np.float32)
+        elite_params_array = np.array(elite_individuals_params, dtype=np.float32)
 
-        # Update mean: average of elite parameters
-        self.mean_params = np.mean(elite_params_array, axis=0)
+        # Calculate elite weights (lambda_i)
+        elite_weights = self._calculate_elite_weights()
 
-        # Update standard deviations: std dev of elite parameters
-        # Add a small epsilon for numerical stability if all elites are identical for some params
-        self.std_devs = np.std(elite_params_array, axis=0) + 1e-8
+        # 1. Update mean_params (μ_new) using weighted average of elites
+        # This is Equation 1 from the paper.
+        self.mean_params = np.average(elite_params_array, axis=0, weights=elite_weights)
 
-        # Add decaying extra noise to std_devs (as per CEM-RL paper)
-        # This helps prevent premature convergence by maintaining exploration
-        extra_noise = self.current_extra_noise_scale * np.random.randn(self.param_dim).astype(np.float32)
-        # Add noise proportional to current std_devs, or a fixed amount
-        # For simplicity, let's add scaled random noise to current std devs
-        # Or, as the paper implies, add a decaying extra variance (epsilon * I to covariance)
-        # Here, we add decaying noise directly to std_devs.
-        self.std_devs += self.current_extra_noise_scale * np.ones_like(self.std_devs)  # Add a base noise
+        # 2. Update std_devs (or variances)
+        if self.update_rule_type == "standard":
+            # Weighted standard deviation of elites around their new mean (μ_new)
+            # Variance = sum(w_i * (x_i - μ_new)^2)
+            # StdDev = sqrt(Variance)
+            squared_diffs = np.square(elite_params_array - self.mean_params)
+            weighted_variances = np.average(squared_diffs, axis=0, weights=elite_weights)
+            self.std_devs = np.sqrt(weighted_variances)
 
-        # Ensure std_devs do not become too small
+        elif self.update_rule_type == "paper_eq3":
+            # Equation 3: Σ_new_diag = Σ λ_i * (z_i - μ_old)²
+            # (This directly calculates variance, then we take sqrt for std_dev)
+            # _mu_old_for_current_generation was set during sample_population()
+            squared_diffs_from_mu_old = np.square(elite_params_array - self._mu_old_for_current_generation)
+            new_variances = np.average(squared_diffs_from_mu_old, axis=0, weights=elite_weights)
+            self.std_devs = np.sqrt(new_variances)
+
+        # 3. Add decaying extra noise (ε term)
+        # The paper adds εI to variance (Σ_new). Adding to std_devs is a common adaptation.
+        # If adding to variance: self.std_devs = np.sqrt(np.square(self.std_devs) + self.current_extra_noise_scale)
+        # If adding to std_dev directly (simpler for now):
+        self.std_devs += self.current_extra_noise_scale  # Adding a base noise level
+
+        # 4. Ensure std_devs do not collapse
         self.std_devs = np.maximum(self.std_devs, self.min_std_dev)
 
-        # Decay the extra noise scale for the next generation
+        # 5. Decay the extra noise scale
         self.current_extra_noise_scale *= self.noise_decay_factor
-        self.current_extra_noise_scale = max(self.current_extra_noise_scale,
-                                             self.min_std_dev / 10.0)  # Don't let it decay to zero completely
+        self.current_extra_noise_scale = max(self.current_extra_noise_scale, self.min_std_dev / 10.0)
 
         best_fitness_this_gen = evaluated_population[0][1]
         print(f"CEM Distribution Updated. Best Fitness: {best_fitness_this_gen:.4f}, "
@@ -163,5 +179,4 @@ class CEMOptimizer:
               f"Current Extra Noise Scale: {self.current_extra_noise_scale:.6f}")
 
     def get_best_params(self) -> np.ndarray:
-        """Returns the current mean parameters, which represent the best estimate."""
         return self.mean_params

@@ -2,7 +2,7 @@
 
 # --- General Environment Settings ---
 environment:
-  n_individuals: 50       # For MultiGAEnv, but CEM population_size will override for actual training
+  n_individuals: 1     # For MultiGAEnv, but CEM population_size will override for actual training
   render_simulation: false
   max_steps_per_episode: 1000
 
@@ -61,3 +61,5 @@ training_config:
     extra_noise_scale: 0.01   # Initial scale of extra noise added to std_devs (prevents premature convergence)
     noise_decay_factor: 0.995 # Factor to decay extra_noise_scale each generation (e.g., 0.99 to 0.999)
     min_std_dev: 0.001        # Minimum standard deviation for parameters to maintain exploration
+    update_rule_type: "standard"
+    elite_weighting_type: "uniform"

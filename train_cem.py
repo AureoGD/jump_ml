@@ -107,7 +107,9 @@ if __name__ == "__main__":
                                  initial_std_dev=cem_hyperparams_cfg.get('initial_std_dev', 0.1),
                                  extra_noise_scale=cem_hyperparams_cfg.get('extra_noise_scale', 0.05),
                                  noise_decay_factor=cem_hyperparams_cfg.get('noise_decay_factor', 0.995),
-                                 min_std_dev=cem_hyperparams_cfg.get('min_std_dev', 0.001))
+                                 min_std_dev=cem_hyperparams_cfg.get('min_std_dev', 0.001),
+                                 update_rule_type=cem_hyperparams_cfg.get('update_rule_type'),
+                                 elite_weighting_type=cem_hyperparams_cfg.get('elite_weighting_type'))
     # Initialize CEM mean with the reference model's initial random weights
     cem_optimizer.set_initial_mean_params(reference_nn_model)
 
@@ -118,7 +120,7 @@ if __name__ == "__main__":
                             log_to_tensorboard=logger_cfg.get('log_to_tensorboard', True),
                             save_best_model=logger_cfg.get('save_best_model', True))
     logger.log_message(f"Starting CEM training for {logger_cfg.get('experiment_name', 'default_exp')}")
-    logger.log_message(f"Full Config: {config}")
+    # logger.log_message(f"Full Config: {config}")
 
     # --- 9. Main CEM Training Loop ---
     num_generations = cem_hyperparams_cfg.get('num_generations', 100)
