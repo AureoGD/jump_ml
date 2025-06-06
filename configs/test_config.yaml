@@ -3,7 +3,7 @@
 
 # --- Environment & Simulation Settings ---
 environment:
-  max_steps_per_episode: 1000  # Run for a short duration for the test
+  max_steps_per_episode: 500  # Run for a short duration for the test
 
 # --- Physics World Configuration ---
 physics_config:

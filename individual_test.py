@@ -66,7 +66,7 @@ if __name__ == "__main__":
             # The evaluator will create the first observation during reset
             # current_obs = individual_sim.evaluator.get_current_observation()
 
-            max_steps = config.get('environment', {}).get('max_steps_per_episode', 300)
+            max_steps = config.get('environment', {}).get('max_steps_per_episode', 100)
 
             for step in range(max_steps):
                 step_states_history = individual_sim.one_step(action)

@@ -156,25 +156,26 @@ class PhysicsWorld:
         """
         Executes one full simulation step.
         """
-        # 1. Read current state from PyBullet and update the HopperModel
-        self._update_model_from_sim(robot_model)
 
-        # 2. Get torque command from the HopperModel
+        # 1. Get torque command from the HopperModel
         torques = robot_model.command_torque()
 
-        # 3. Apply torques to the robot's joints
+        # 2. Apply torques to the robot's joints
         p.setJointMotorControlArray(bodyUniqueId=self.robot_id,
                                     jointIndices=robot_model.AC_JOINT_LIST,
                                     controlMode=p.TORQUE_CONTROL,
                                     forces=torques.flatten().tolist(),
                                     physicsClientId=self.client_id)
 
-        # 4. Apply external disturbance force if active
+        # 3. Apply external disturbance force if active
         if self.disturbance:
             self.disturbance.apply(current_episode_step, self.client_id)
 
-        # 5. Advance the physics simulation
+        # 4. Advance the physics simulation
         p.stepSimulation(physicsClientId=self.client_id)
+
+        # 5. Read the new state from PyBullet and update the HopperModel
+        self._update_model_from_sim(robot_model)
 
         # 6. Real-time rendering sleep logic
         if self.render:

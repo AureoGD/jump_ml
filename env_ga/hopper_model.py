@@ -118,7 +118,7 @@ class HopperModel():
     def _torque_compG(self) -> np.ndarray:
         """Calculates gravity compensation torque."""
         rot = self._rotY()
-        self.mdl.update_jacobians()
+
         J_com1 = rot @ self.mdl.J_com1
         J_com2 = rot @ self.mdl.J_com2
         J_com3 = rot @ self.mdl.J_com3
@@ -144,6 +144,7 @@ class HopperModel():
 
         # Update the underlying matrix model with new joint states
         self.mdl.update_robot_states(q=self.robot_states['q'], dq=self.robot_states['dq'])
+        self.mdl.update_kinematics()
 
         # Update kinematic properties and CoM
         r_vet = self.mdl.update_com_pos()
@@ -161,7 +162,7 @@ class HopperModel():
         """Generates a random initial joint configuration for an episode."""
         q = np.zeros((self.JOINT_MODEL_NUM, 1), dtype=np.float64)
         q[0, 0] = random.uniform(0, 2)
-        q[1, 0] = 0.90
+        q[1, 0] = 0.88
         q[3, 0] = -0.56
         q[4, 0] = 1.06
         q[5, 0] = -0.50
