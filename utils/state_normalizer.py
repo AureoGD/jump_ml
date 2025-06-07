@@ -187,7 +187,7 @@ class StateNormalizer:
             if norm_type == 'online':
                 normalized_slice = (reshaped_feature_slice - self.mean[key]) / np.sqrt(self.var[key] + 1e-8)
             elif norm_type == 'static':
-                normalized_slice = self.alpha[key] * reshaped_feature_slice + self.beta[key]
+                normalized_slice = self.alpha[key] @ reshaped_feature_slice + self.beta[key]
             else:
                 normalized_slice = reshaped_feature_slice  # Pass through if no normalization
 

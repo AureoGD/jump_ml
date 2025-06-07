@@ -96,3 +96,6 @@ class StepEvaluator:
         self.reward_calculator.reset_variables()
         self.total_reward = 0.0
         self.terminated = False
+
+    def calculate_fitness(self, states):
+        return 0

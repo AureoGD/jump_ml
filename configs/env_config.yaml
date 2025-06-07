@@ -2,7 +2,7 @@
 
 # --- General Environment Settings ---
 environment:
-  n_individuals: 1     # For MultiGAEnv, but CEM population_size will override for actual training
+  n_individuals: 20     # For MultiGAEnv, but CEM population_size will override for actual training
   render_simulation: false
   max_steps_per_episode: 1000
 
@@ -55,7 +55,7 @@ logger_config:
 training_config:
   cem:
     num_generations: 1000      # Total number of CEM generations to run
-    population_size: 50       # Number of individuals (NN weight vectors) per generation
+    population_size: 20     # Number of individuals (NN weight vectors) per generation
     elite_fraction: 0.1       # Top 10% of the population selected as elites
     initial_std_dev: 0.5      # Initial standard deviation for sampling NN weights
     extra_noise_scale: 0.01   # Initial scale of extra noise added to std_devs (prevents premature convergence)

@@ -39,6 +39,7 @@ class TrainingLogger:
         self.log_to_csv = log_to_csv
         self.log_to_tensorboard = log_to_tensorboard if SummaryWriter is not None else False
         self.save_best_model_flag = save_best_model
+        self.last_generation_end_time = time.time()   
 
         timestamp_str_file = time.strftime("%Y%m%d-%H%M%S")
         self.run_log_dir = os.path.join(self.log_dir, f"{self.experiment_name}_{timestamp_str_file}")
@@ -52,7 +53,7 @@ class TrainingLogger:
         self.csv_writer = None
         self.csv_file = None
         self.csv_headers = [
-            "generation", "timestamp", "best_fitness_in_gen", "mean_fitness", "std_fitness", "min_fitness",
+            "generation", "timestamp", "generation_duration_sec","best_fitness_in_gen", "mean_fitness", "std_fitness", "min_fitness",
             "population_size", "overall_best_fitness", "cem_mean_std_dev", "cem_extra_noise_scale"
         ]
 
@@ -139,7 +140,9 @@ class TrainingLogger:
         population_size = len(fitness_scores)
 
         timestamp_console = time.strftime("%Y-%m-%d %H:%M:%S")
-
+        current_time = time.time()   
+        generation_duration = current_time - self.last_generation_end_time
+        self.last_generation_end_time = current_time
         # Check if this generation's best is the overall best
         new_overall_best_found = False
         if best_fitness_in_gen > self.overall_best_fitness:
@@ -162,6 +165,7 @@ class TrainingLogger:
         log_entry_csv = {
             "generation": generation,
             "timestamp": timestamp_console,
+            "generation_duration_sec": f"{generation_duration:.2f}",
             "best_fitness_in_gen": f"{best_fitness_in_gen:.4f}",
             "mean_fitness": f"{mean_fitness:.4f}",
             "std_fitness": f"{std_fitness:.4f}",
@@ -184,7 +188,10 @@ class TrainingLogger:
                 log_entry_csv["cem_extra_noise_scale"] = f"{cem_extra_noise_scale_val:.6f}"
 
         console_msg_parts = [
-            f"Gen: {generation:04d}", f"BestFitInGen: {best_fitness_in_gen:.2f}", f"MeanFit: {mean_fitness:.2f}",
+            f"Gen: {generation:04d}",
+            f"Time: {generation_duration:6.2f}s", # Added duration
+            f"BestFit: {best_fitness_in_gen:.2f}",
+            f"MeanFit: {mean_fitness:.2f}",
             f"OverallBest: {self.overall_best_fitness:.2f}"
         ]
         if new_overall_best_found:

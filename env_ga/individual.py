@@ -36,6 +36,7 @@ class Individual():
         self.step_states.clear()
         self.robot.reset_variables()
         self.physics.reset_robot(self.robot)
+        return self.robot.robot_states.copy()
 
     def close(self):
         """Disconnects from the PyBullet server."""

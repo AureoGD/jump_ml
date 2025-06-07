@@ -1,18 +1,16 @@
-# switch_rules/nn_switch_rule.py
+# switch_rules/mlp_switch_rule.py
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
-# Assuming SwitchRuleBase is in jump_ga.env_ga.switch_rule_base
-# Adjust import path as needed
+# Assuming these imports are correct for your project structure
 from .switch_rule_base import SwitchRuleBase
 from utils.state_normalizer import StateNormalizer
 
 
 class SimpleMLP(SwitchRuleBase, nn.Module):
 
-    def __init__(self, observation_dim: int, num_modes: int, state_normalizer=None, **kwargs):
+    def __init__(self, observation_dim: int, num_modes: int, state_normalizer: StateNormalizer = None, **kwargs):
         """
         An NN-based SwitchRule that handles its own state normalization.
 
@@ -22,12 +20,13 @@ class SimpleMLP(SwitchRuleBase, nn.Module):
             state_normalizer (StateNormalizer, optional): An instance of a fitted StateNormalizer.
                                                         If None, states will be used as-is.
         """
-        super().__init__()  # Calls both SwitchRuleBase and nn.Module __init__
+        super().__init__()
         self.normalizer = state_normalizer
         self.num_modes = num_modes
+        self.observation_dim = observation_dim
 
         # The NN layers are defined based on the observation dimension
-        self.fc1 = torch.nn.Linear(observation_dim, 128)  # Example hidden size
+        self.fc1 = torch.nn.Linear(observation_dim, 128)
         self.fc2 = torch.nn.Linear(128, 128)
         self.fc_out = torch.nn.Linear(128, num_modes)
 
@@ -50,15 +49,23 @@ class SimpleMLP(SwitchRuleBase, nn.Module):
             int: The selected MPC mode.
         """
         # 1. Normalize the state if a normalizer is available
-        if self.normalizer and self.normalizer.is_fitted:
-            normalized_state = self.normalizer.transform(raw_state)
+        if self.normalizer:
+            # --- CORRECTED METHOD CALL ---
+            # Changed from .transform() to .normalize() to match your StateNormalizer class
+            normalized_state = self.normalizer.normalize(raw_state)
         else:
             normalized_state = raw_state  # Use raw state if no normalizer
 
         # 2. Convert to tensor
         state_tensor = torch.from_numpy(normalized_state).float().unsqueeze(0)
-        device = next(self.parameters()).device
-        state_tensor = state_tensor.to(device)
+        
+        # Ensure tensor is on the same device as the model parameters
+        try:
+            device = next(self.parameters()).device
+            state_tensor = state_tensor.to(device)
+        except StopIteration: # Handles case where model has no parameters
+            pass
+
 
         # 3. Get action from the NN
         with torch.no_grad():
@@ -71,3 +78,4 @@ class SimpleMLP(SwitchRuleBase, nn.Module):
             selected_mode = torch.multinomial(mode_probabilities, num_samples=1).item()
 
         return selected_mode
+
