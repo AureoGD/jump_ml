@@ -13,9 +13,9 @@ from .jump_matrices import ModelMatrices
 # This is a more robust way to define the path to your compiled C++ module
 # The `ls` command confirms the build directory is at '~/jump_ml/rgc_controller/build'.
 # We use an absolute path to be safe. os.path.expanduser('~') resolves '~' to your home directory.
-# TODO: solve the path to be generic 
-path_to_build = os.path.expanduser('~/jump_git/jump_ml/rgc_controller/build') 
-path_to_config = os.path.expanduser('~/jump_git/jump_ml/rgc_controller/config/config.yaml')
+# TODO: solve the path to be generic
+path_to_build = os.path.expanduser('~/jump_ml/rgc_controller/build')
+path_to_config = os.path.expanduser('~/jump_ml/rgc_controller/config/config.yaml')
 
 # Add the correct path to where Python searches for modules
 if path_to_build not in sys.path:
